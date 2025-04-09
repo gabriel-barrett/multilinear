@@ -1,5 +1,6 @@
 use std::time::Instant;
 
+use ark_ff::Field;
 use spongefish::DomainSeparator;
 use spongefish_pow::blake3::Blake3PoW;
 use whir::whir::{
@@ -27,6 +28,7 @@ type ExtField = Field64_2;
 type PowStrategy = Blake3PoW;
 type MerkleConfig = KeccakMerkleTreeParams<ExtField>;
 
+#[derive(Clone, Copy)]
 pub struct Conf {
     security_level: usize,
     rate: usize,
@@ -47,6 +49,22 @@ pub fn default_conf() -> Conf {
     }
 }
 
+#[derive(Default, Debug, Clone)]
+pub struct LagrangePolynomial<F>(Vec<F>);
+
+impl<F: Field> LagrangePolynomial<F> {
+    pub fn new(evals: Vec<F>) -> Self {
+        let len = evals.len();
+        assert!(len.is_power_of_two());
+        Self(evals)
+    }
+
+    pub fn to_coefficient_list(self) -> CoefficientList<F> {
+        let coeffs = mobius_inversion(self.0);
+        CoefficientList::new(coeffs)
+    }
+}
+
 pub fn default_polynomial(num_variables: usize) -> CoefficientList<BaseField> {
     let num_coeffs = 1 << num_variables;
     CoefficientList::new((0..num_coeffs).map(BaseField::from).collect())
@@ -62,7 +80,7 @@ pub fn default_points(
 }
 
 pub fn run_pcs(
-    conf: &Conf,
+    conf: Conf,
     polynomial: CoefficientList<BaseField>,
     points: &[MultilinearPoint<ExtField>],
 ) {
@@ -104,26 +122,25 @@ pub fn run_pcs(
         println!("WARN: more PoW bits required than what specified.");
     }
 
-    let whir_prover_time = Instant::now();
-
-    // Evaluation constraint
+    let whir_execution_time = Instant::now();
     let mut statement: Statement<ExtField> = Statement::<ExtField>::new(num_variables);
-
     for point in points {
         let eval = polynomial.evaluate_at_extension(point);
         let weights = Weights::evaluation(point.clone());
         statement.add_constraint(weights, eval);
     }
+    println!("Execution time: {:.1?}", whir_execution_time.elapsed());
 
+    let whir_commitment_time = Instant::now();
     let committer = CommitmentWriter::new(params.clone());
     let witness = committer.commit(&mut prover_state, polynomial).unwrap();
+    println!("Commitment time: {:.1?}", whir_commitment_time.elapsed());
 
+    let whir_prover_time = Instant::now();
     let prover = Prover(params.clone());
-
     let proof = prover
         .prove(&mut prover_state, statement.clone(), witness)
         .unwrap();
-
     println!("Prover time: {:.1?}", whir_prover_time.elapsed());
     println!(
         "Proof size: {:.1} KiB",
@@ -134,7 +151,6 @@ pub fn run_pcs(
     // Just not to count that initial inversion (which could be precomputed)
     let commitment_reader = CommitmentReader::new(&params);
     let verifier = Verifier::new(&params);
-
     HashCounter::reset();
     let whir_verifier_time = Instant::now();
     let mut verifier_state = domainsep.to_verifier_state(prover_state.narg_string());
@@ -156,4 +172,60 @@ pub fn run_pcs(
     );
 }
 
-fn main() {}
+fn mobius_inversion<F: Field>(evals: Vec<F>) -> Vec<F> {
+    let n = evals.len().trailing_zeros(); // Assumes evals.len() == 2^n
+    let mut coeffs = evals;
+
+    for i in 0..n {
+        for mask in 0..(1 << n) {
+            if (mask & (1 << i)) != 0 {
+                let tmp = coeffs[mask ^ (1 << i)];
+                coeffs[mask] -= tmp;
+            }
+        }
+    }
+
+    coeffs
+}
+
+fn translation_test() {
+    let f = BaseField::from;
+    let coeffs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map(f);
+
+    let polynomial = CoefficientList::new(coeffs.to_vec());
+    let evals = [
+        [f(0), f(0), f(0), f(0)],
+        [f(0), f(0), f(0), f(1)],
+        [f(0), f(0), f(1), f(0)],
+        [f(0), f(0), f(1), f(1)],
+        [f(0), f(1), f(0), f(0)],
+        [f(0), f(1), f(0), f(1)],
+        [f(0), f(1), f(1), f(0)],
+        [f(0), f(1), f(1), f(1)],
+        [f(1), f(0), f(0), f(0)],
+        [f(1), f(0), f(0), f(1)],
+        [f(1), f(0), f(1), f(0)],
+        [f(1), f(0), f(1), f(1)],
+        [f(1), f(1), f(0), f(0)],
+        [f(1), f(1), f(0), f(1)],
+        [f(1), f(1), f(1), f(0)],
+        [f(1), f(1), f(1), f(1)],
+    ]
+    .map(|arr| polynomial.evaluate(&MultilinearPoint(arr.to_vec())))
+    .to_vec();
+    assert_eq!(coeffs.to_vec(), mobius_inversion(evals));
+}
+
+fn pcs_test() {
+    let num_variables = 10;
+    let polynomial = default_polynomial(num_variables);
+    let conf = default_conf();
+    let num_evaluations = 1;
+    let points = default_points(num_variables, num_evaluations);
+    run_pcs(conf, polynomial, &points);
+}
+
+fn main() {
+    translation_test();
+    pcs_test();
+}
