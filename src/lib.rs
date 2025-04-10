@@ -1,5 +1,8 @@
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 use whir::crypto::fields::{Field64, Field64_2};
 
+pub mod constraints;
 pub mod lagrange;
 pub mod pcs;
 

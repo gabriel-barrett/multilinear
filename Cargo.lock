@@ -981,6 +981,7 @@ dependencies = [
  "ark-std",
  "blake3",
  "clap",
+ "hex",
  "itertools 0.14.0",
  "rand",
  "rayon",
