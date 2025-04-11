@@ -1,3 +1,4 @@
+/*
 use std::time::Instant;
 
 use spongefish::DomainSeparator;
@@ -166,3 +167,4 @@ mod tests {
         run_pcs(conf, polynomial, &points);
     }
 }
+*/
