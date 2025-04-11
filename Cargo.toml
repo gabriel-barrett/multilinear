@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 whir = { path = "whir/" }
+anyhow = "1"
 ark-std = { version = "0.5", features = ["std"] }
 ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-serialize = "0.5"

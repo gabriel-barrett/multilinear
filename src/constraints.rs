@@ -1,7 +1,7 @@
 use crate::BaseField;
 
-#[derive(Clone, Copy)]
-pub struct Var<const J: usize>(usize);
+#[derive(Clone, Copy, Debug)]
+pub struct Var<const J: usize>(pub(crate) usize);
 
 impl<const J: usize> Var<J> {
     pub fn new(value: usize) -> Self {
@@ -26,7 +26,8 @@ impl<const J: usize> Var<J> {
     }
 }
 
-pub struct LinearCombination<const J: usize>(Box<[(BaseField, Var<J>)]>);
+#[derive(Clone, Debug)]
+pub struct LinearCombination<const J: usize>(pub(crate) Box<[(BaseField, Var<J>)]>);
 
 impl<const J: usize> LinearCombination<J> {
     pub fn evaluate(&self, points: &[BaseField; J]) -> BaseField {
@@ -34,9 +35,12 @@ impl<const J: usize> LinearCombination<J> {
     }
 }
 
-pub struct Constraint<const J: usize>(Box<[(LinearCombination<J>, LinearCombination<J>)]>);
+#[derive(Clone, Debug)]
+pub struct Quadratic<const J: usize>(
+    pub(crate) Box<[(LinearCombination<J>, LinearCombination<J>)]>,
+);
 
-impl<const J: usize> Constraint<J> {
+impl<const J: usize> Quadratic<J> {
     pub fn evaluate(&self, col1: &[BaseField; J], col2: &[BaseField; J]) -> BaseField {
         self.0
             .iter()
@@ -45,40 +49,48 @@ impl<const J: usize> Constraint<J> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct ConstraintSet<const J: usize, const K: usize>
 where
     [(); 1 << K]:,
 {
-    constraints: Box<[Constraint<J>; 1 << K]>,
+    pub expressions: Box<[Quadratic<J>; 1 << K]>,
 }
 
-impl<const J: usize, const K: usize> ConstraintSet<J, K>
+#[derive(Clone, Debug)]
+pub struct ConstraintSetMatrix<const J: usize, const K: usize>
 where
     [(); 1 << K]:,
 {
-    pub fn evaluate(
-        &self,
-        col1: &[BaseField; J],
-        col2: &[BaseField; J],
-        constraint: &[BaseField; K],
-    ) -> BaseField {
-        self.constraints
+    pub set: ConstraintSet<J, K>,
+    pub random_k: [BaseField; K],
+}
+
+impl<const J: usize, const K: usize> ConstraintSetMatrix<J, K>
+where
+    [(); 1 << K]:,
+{
+    pub fn evaluate(&self, col1: &[BaseField; J], col2: &[BaseField; J]) -> BaseField {
+        let random_k = &self.random_k;
+        self.set
+            .expressions
             .iter()
             .enumerate()
             .map(|(k, expression)| {
-                let constraint_mask = Var::<K>(k).evaluate(constraint);
+                let constraint_mask = Var::<K>(k).evaluate(random_k);
                 constraint_mask * expression.evaluate(col1, col2)
             })
             .sum()
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Trace<const I: usize, const J: usize>
 where
     [(); 1 << I]:,
     [(); 1 << J]:,
 {
-    rows: Box<[[BaseField; 1 << J]; 1 << I]>,
+    pub rows: Box<[[BaseField; 1 << J]; 1 << I]>,
 }
 
 impl<const I: usize, const J: usize> Trace<I, J>
@@ -99,8 +111,9 @@ where
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Delta<const I: usize> {
-    data: [BaseField; I],
+    pub data: [BaseField; I],
 }
 
 impl<const I: usize> Delta<I> {
@@ -133,13 +146,12 @@ mod tests {
     #[test]
     fn trace_evaluation_test() {
         let f = BaseField::from;
-        let rows = [
+        let rows = Box::new([
             [1, 2, 3, 4].map(f),
             [5, 6, 7, 8].map(f),
             [9, 10, 11, 12].map(f),
             [13, 14, 15, 16].map(f),
-        ]
-        .into();
+        ]);
         let trace = Trace { rows };
         let zero = [0, 0].map(f);
         let one = [0, 1].map(f);
