@@ -3,6 +3,7 @@
 use whir::crypto::fields::{Field64, Field64_2};
 
 pub mod constraints;
+pub mod expr;
 pub mod lagrange;
 pub mod pcs;
 
