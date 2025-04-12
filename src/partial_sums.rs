@@ -388,17 +388,21 @@ mod tests {
     #[test]
     fn sumcheck_high_bench() {
         let mut rows = pythagorean_trace().rows.to_vec();
-        const TOTAL_HEIGHT: usize = 10;
-        for _ in 0..TOTAL_HEIGHT - I {
+        const TOTAL_LOG_HEIGHT: usize = 18;
+        for _ in 0..TOTAL_LOG_HEIGHT - I {
             rows.extend(rows.clone());
         }
-        assert_eq!(rows.len(), 1 << TOTAL_HEIGHT);
-        let trace = Trace::<TOTAL_HEIGHT, J> {
+        assert_eq!(rows.len(), 1 << TOTAL_LOG_HEIGHT);
+        let trace = Trace::<TOTAL_LOG_HEIGHT, J> {
             rows: rows.try_into().unwrap(),
         };
         let set = pythagorean_set();
         let system = BQCS::new(trace, set);
-        println!("GENERATING POLYNOMIAL");
+        println!(
+            "GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
+            1 << TOTAL_LOG_HEIGHT,
+            1 << J,
+        );
         let now = Instant::now();
         let pols = system.generate_partial_polynomials();
         println!("Generation took {:?}", now.elapsed());
@@ -412,17 +416,21 @@ mod tests {
     #[test]
     fn sumcheck_high_transposed_bench() {
         let mut rows = pythagorean_trace().rows.to_vec();
-        const TOTAL_HEIGHT: usize = 10;
-        for _ in 0..TOTAL_HEIGHT - I {
+        const TOTAL_LOG_HEIGHT: usize = 10;
+        for _ in 0..TOTAL_LOG_HEIGHT - I {
             rows.extend(rows.clone());
         }
-        assert_eq!(rows.len(), 1 << TOTAL_HEIGHT);
-        let trace = Trace::<TOTAL_HEIGHT, J> {
+        assert_eq!(rows.len(), 1 << TOTAL_LOG_HEIGHT);
+        let trace = Trace::<TOTAL_LOG_HEIGHT, J> {
             rows: rows.try_into().unwrap(),
         };
         let set = pythagorean_set();
         let system = BQCS::new(trace, set);
-        println!("GENERATING POLYNOMIAL");
+        println!(
+            "GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
+            1 << TOTAL_LOG_HEIGHT,
+            1 << J,
+        );
         let now = Instant::now();
         let pols = system.generate_partial_polynomials_transposed();
         println!("Generation took {:?}", now.elapsed());

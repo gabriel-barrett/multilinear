@@ -12,6 +12,7 @@ ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
 ark-serialize = "0.5"
 ark-std = { version = "0.5", features = ["std"] }
+bincode = { version = "2.0.0", features = ["serde", "alloc"] }
 blake3 = "1.5.0"
 clap = { version = "4.4.17", features = ["derive"] }
 itertools = "0.14"
@@ -27,5 +28,23 @@ tracing = { version = "0.1.41", optional = true }
 
 whir = { path = "whir" }
 
+p3-air = { path = "Plonky3/air" }
+p3-challenger = { path = "Plonky3/challenger" }
+p3-commit = { path = "Plonky3/commit" }
+p3-dft = { path = "Plonky3/dft" }
+p3-field = { path = "Plonky3/field" }
+p3-fri = { path = "Plonky3/fri" }
+p3-goldilocks = { path = "Plonky3/goldilocks" }
+p3-baby-bear = { path = "Plonky3/baby-bear" }
+p3-koala-bear = { path = "Plonky3/koala-bear" }
+p3-matrix = { path = "Plonky3/matrix" }
+p3-maybe-rayon = { path = "Plonky3/maybe-rayon" }
+p3-mds = { path = "Plonky3/mds" }
+p3-merkle-tree = { path = "Plonky3/merkle-tree" }
+p3-poseidon2 = { path = "Plonky3/poseidon2" }
+p3-symmetric = { path = "Plonky3/symmetric" }
+p3-uni-stark = { path = "Plonky3/uni-stark" }
+p3-util = { path = "Plonky3/util" }
+
 [features]
-asm = ["ark-ff/asm"]
+parallel = ["p3-maybe-rayon/parallel", "p3-uni-stark/parallel"]
