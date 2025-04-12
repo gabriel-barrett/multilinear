@@ -1,24 +1,12 @@
 use anyhow::{ensure, Context, Result};
 use ark_ff::AdditiveGroup;
-use std::ops::Add;
 
 use crate::{
-    constraints::{ConstraintSet, ConstraintSetMatrix, Delta, Trace},
+    constraints::BQCS,
+    polynomials::{SquarePolynomial, SquarePolynomialEval},
     BaseField,
 };
 use rand::{rngs::ThreadRng, Rng};
-
-// Batched quadratic constraint system
-pub struct BQCS<const I: usize, const J: usize, const K: usize>
-where
-    [(); 1 << I]:,
-    [(); 1 << J]:,
-    [(); 1 << K]:,
-{
-    pub delta: Delta<I>,
-    pub trace: Trace<I, J>,
-    pub matrix: ConstraintSetMatrix<J, K>,
-}
 
 impl<const I: usize, const J: usize, const K: usize> BQCS<I, J, K>
 where
@@ -26,103 +14,6 @@ where
     [(); 1 << J]:,
     [(); 1 << K]:,
 {
-    pub fn new(trace: Trace<I, J>, set: ConstraintSet<J, K>) -> Self {
-        let (random_i, random_k) = generate_challenges(&trace);
-        let delta = Delta { data: random_i };
-        let matrix = ConstraintSetMatrix { set, random_k };
-        Self {
-            delta,
-            trace,
-            matrix,
-        }
-    }
-
-    pub fn evaluate(
-        &self,
-        row1: &[BaseField; I],
-        row2: &[BaseField; I],
-        col1: &[BaseField; J],
-        col2: &[BaseField; J],
-    ) -> BaseField {
-        let d = self.delta.evaluate(row1, row2);
-        let a = self.matrix.evaluate(col1, col2);
-        let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
-        }
-        let w1 = self.trace.evaluate(row1, col1);
-        let w2 = self.trace.evaluate(row2, col2);
-        c * w1 * w2
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn evaluate_hypercube(
-        &self,
-        row1: &[BaseField],
-        row2: &[BaseField],
-        row_bits: usize,
-        col1: &[BaseField],
-        col1_bits: usize,
-        col2: &[BaseField],
-        col2_bits: usize,
-    ) -> BaseField {
-        let d = self.delta.evaluate_hypercube(row1, row2, row_bits);
-        let a = self
-            .matrix
-            .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
-        let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
-        }
-        let w1 = self
-            .trace
-            .evaluate_hypercube(row1, row_bits, col1, col1_bits);
-        let w2 = self
-            .trace
-            .evaluate_hypercube(row2, row_bits, col2, col2_bits);
-        c * w1 * w2
-    }
-
-    pub fn evaluate_hypercube_row(
-        &self,
-        row: usize,
-        col1: &[BaseField],
-        col1_bits: usize,
-        col2: &[BaseField],
-        col2_bits: usize,
-    ) -> BaseField {
-        let d = self.delta.evaluate_hypercube(&[], &[], row);
-        let a = self
-            .matrix
-            .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
-        let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
-        }
-        let w1 = self.trace.evaluate_hypercube_row(row, col1, col1_bits);
-        let w2 = self.trace.evaluate_hypercube_row(row, col2, col2_bits);
-        c * w1 * w2
-    }
-
-    pub fn evaluate_hypercube_col(
-        &self,
-        row1: &[BaseField],
-        row2: &[BaseField],
-        row_bits: usize,
-        col1: usize,
-        col2: usize,
-    ) -> BaseField {
-        let d = self.delta.evaluate_hypercube(row1, row2, row_bits);
-        let a = self.matrix.evaluate_hypercube(&[], col1, &[], col2);
-        let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
-        }
-        let w1 = self.trace.evaluate_hypercube_col(row1, row_bits, col1);
-        let w2 = self.trace.evaluate_hypercube_col(row2, row_bits, col2);
-        c * w1 * w2
-    }
-
     // Okay as it is linear in the height, but it is still width squared,
     // even if the constraint matrix usually has a sparse representation.
     // Needs further optimizations.
@@ -208,8 +99,8 @@ where
         acc
     }
 
-    pub fn generate_partial_polynomials(&self) -> Vec<(BaseField, SquarePolynomial)> {
-        let mut rng = rand::thread_rng();
+    pub fn generate_partial_polynomials(&self) -> Vec<(BaseField, SquarePolynomial<BaseField>)> {
+        let mut rng = rand::rng();
         let mut acc = Vec::with_capacity(2 * I + 2 * J);
 
         let mut index_j1 = Vec::with_capacity(J);
@@ -243,8 +134,10 @@ where
         acc
     }
 
-    pub fn generate_partial_polynomials_transposed(&self) -> Vec<(BaseField, SquarePolynomial)> {
-        let mut rng = rand::thread_rng();
+    pub fn generate_partial_polynomials_transposed(
+        &self,
+    ) -> Vec<(BaseField, SquarePolynomial<BaseField>)> {
+        let mut rng = rand::rng();
         let mut acc = Vec::with_capacity(2 * I + 2 * J);
 
         let mut index_i1 = Vec::with_capacity(I);
@@ -283,15 +176,9 @@ where
         index1: &mut Vec<BaseField>,
         index2: &mut Vec<BaseField>,
         rng: &mut ThreadRng,
-        acc: &mut Vec<(BaseField, SquarePolynomial)>,
+        acc: &mut Vec<(BaseField, SquarePolynomial<BaseField>)>,
         partial_sum: impl Fn(&[BaseField], &[BaseField]) -> BaseField,
     ) {
-        fn modify_last(vec: &mut [BaseField], a: BaseField) -> &mut [BaseField] {
-            let len = vec.len();
-            vec[len - 1] = a;
-            vec
-        }
-
         let f = BaseField::from;
         index1.push(f(-1));
         index2.push(f(0));
@@ -312,13 +199,48 @@ where
             one: one1,
         };
         let pol1 = pol10 + pol11;
-        let r1 = BaseField::from(rng.gen::<u64>());
+        let r1 = BaseField::from(rng.random::<u64>());
         let pol2 = SquarePolynomialEval {
             minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
             zero: pol10.evaluate(r1),
             one: pol11.evaluate(r1),
         };
-        let r2 = BaseField::from(rng.gen::<u64>());
+        let r2 = BaseField::from(rng.random::<u64>());
+        modify_last(index2, r2);
+        acc.push((r1, pol1.to_polynomial()));
+        acc.push((r2, pol2.to_polynomial()));
+    }
+
+    #[allow(dead_code)]
+    fn push_polynomials_no_opt(
+        &self,
+        index1: &mut Vec<BaseField>,
+        index2: &mut Vec<BaseField>,
+        rng: &mut ThreadRng,
+        acc: &mut Vec<(BaseField, SquarePolynomial<BaseField>)>,
+        partial_sum: impl Fn(&[BaseField], &[BaseField]) -> BaseField,
+    ) {
+        let f = BaseField::from;
+        index1.push(f(-1));
+        index2.push(f(0));
+        let minus_one =
+            partial_sum(index1, index2) + partial_sum(index1, modify_last(index2, f(1)));
+        let zero = partial_sum(modify_last(index1, f(0)), index2)
+            + partial_sum(index1, modify_last(index2, f(0)));
+        let one = partial_sum(modify_last(index1, f(1)), index2)
+            + partial_sum(index1, modify_last(index2, f(1)));
+        let pol1 = SquarePolynomialEval {
+            minus_one,
+            zero,
+            one,
+        };
+        let r1 = BaseField::from(rng.random::<u64>());
+        let pol2 = SquarePolynomialEval {
+            minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
+            zero: partial_sum(index1, modify_last(index2, f(0))),
+            one: partial_sum(index1, modify_last(index2, f(1))),
+        };
+        let r2 = BaseField::from(rng.random::<u64>());
         modify_last(index2, r2);
         acc.push((r1, pol1.to_polynomial()));
         acc.push((r2, pol2.to_polynomial()));
@@ -326,7 +248,7 @@ where
 
     pub fn verify_sumcheck(
         &self,
-        pols: &[(BaseField, SquarePolynomial)],
+        pols: &[(BaseField, SquarePolynomial<BaseField>)],
         sum: BaseField,
     ) -> Result<()> {
         let mut r_iter = pols.iter().map(|(r, _)| r);
@@ -341,7 +263,7 @@ where
 
     pub fn verify_sumcheck_transposed(
         &self,
-        pols: &[(BaseField, SquarePolynomial)],
+        pols: &[(BaseField, SquarePolynomial<BaseField>)],
         sum: BaseField,
     ) -> Result<()> {
         let mut r_iter = pols.iter().map(|(r, _)| r);
@@ -356,7 +278,7 @@ where
 
     fn verify_sumcheck_constraints(
         &self,
-        pols: &[(BaseField, SquarePolynomial)],
+        pols: &[(BaseField, SquarePolynomial<BaseField>)],
         sum: BaseField,
         row1: &[BaseField; I],
         row2: &[BaseField; I],
@@ -387,68 +309,11 @@ where
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct SquarePolynomialEval {
-    pub one: BaseField,
-    pub zero: BaseField,
-    pub minus_one: BaseField,
-}
-
-impl Add for SquarePolynomialEval {
-    type Output = SquarePolynomialEval;
-    fn add(self, other: SquarePolynomialEval) -> SquarePolynomialEval {
-        SquarePolynomialEval {
-            one: self.one + other.one,
-            zero: self.zero + other.zero,
-            minus_one: self.minus_one + other.minus_one,
-        }
-    }
-}
-
-impl SquarePolynomialEval {
-    pub fn to_polynomial(self) -> SquarePolynomial {
-        let a = self.zero;
-        let b = (self.one - self.minus_one) / BaseField::from(2);
-        let c = (self.one + self.minus_one) / BaseField::from(2) - a;
-        SquarePolynomial { coeffs: [a, b, c] }
-    }
-
-    pub fn evaluate(&self, x: BaseField) -> BaseField {
-        self.to_polynomial().evaluate(x)
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct SquarePolynomial {
-    pub coeffs: [BaseField; 3],
-}
-
-impl std::fmt::Debug for SquarePolynomial {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [a, b, c] = self.coeffs;
-        write!(f, "{} + {}*X + {}*X^2", a, b, c)?;
-        Ok(())
-    }
-}
-
-impl SquarePolynomial {
-    pub fn evaluate(&self, x: BaseField) -> BaseField {
-        let [a, b, c] = self.coeffs;
-        a + b * x + c * x * x
-    }
-}
-
-fn generate_challenges<const I: usize, const J: usize, const K: usize>(
-    _trace: &Trace<I, J>,
-) -> ([BaseField; I], [BaseField; K])
-where
-    [(); 1 << I]:,
-    [(); 1 << J]:,
-{
-    let mut rng = rand::thread_rng();
-    let random_i = [(); I].map(|_| BaseField::from(rng.gen::<u64>()));
-    let random_k = [(); K].map(|_| BaseField::from(rng.gen::<u64>()));
-    (random_i, random_k)
+// Auxiliary function
+fn modify_last(vec: &mut [BaseField], a: BaseField) -> &mut [BaseField] {
+    let len = vec.len();
+    vec[len - 1] = a;
+    vec
 }
 
 #[cfg(test)]
@@ -456,7 +321,10 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
-    use crate::expr::Expr;
+    use crate::{
+        constraints::{ConstraintSet, Trace},
+        expr::Expr,
+    };
 
     const I: usize = 4;
     const J: usize = 2;

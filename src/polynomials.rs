@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use ark_ff::Field;
 use whir::poly_utils::coeffs::CoefficientList;
 
@@ -31,6 +33,57 @@ fn mobius_inversion<F: Field>(evals: Vec<F>) -> Vec<F> {
     }
 
     coeffs
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct SquarePolynomialEval<F> {
+    pub one: F,
+    pub zero: F,
+    pub minus_one: F,
+}
+
+impl<F: Field> Add for SquarePolynomialEval<F> {
+    type Output = SquarePolynomialEval<F>;
+    fn add(self, other: SquarePolynomialEval<F>) -> SquarePolynomialEval<F> {
+        SquarePolynomialEval {
+            one: self.one + other.one,
+            zero: self.zero + other.zero,
+            minus_one: self.minus_one + other.minus_one,
+        }
+    }
+}
+
+impl<F: Field> SquarePolynomialEval<F> {
+    pub fn to_polynomial(self) -> SquarePolynomial<F> {
+        let a = self.zero;
+        let b = (self.one - self.minus_one) / F::from(2);
+        let c = (self.one + self.minus_one) / F::from(2) - a;
+        SquarePolynomial { coeffs: [a, b, c] }
+    }
+
+    pub fn evaluate(&self, x: F) -> F {
+        self.to_polynomial().evaluate(x)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct SquarePolynomial<F> {
+    pub coeffs: [F; 3],
+}
+
+impl<F: Field> std::fmt::Debug for SquarePolynomial<F> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [a, b, c] = self.coeffs;
+        write!(f, "{} + {}*X + {}*X^2", a, b, c)?;
+        Ok(())
+    }
+}
+
+impl<F: Field> SquarePolynomial<F> {
+    pub fn evaluate(&self, x: F) -> F {
+        let [a, b, c] = self.coeffs;
+        a + b * x + c * x * x
+    }
 }
 
 #[cfg(test)]

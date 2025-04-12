@@ -6,24 +6,26 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-whir = { path = "whir/" }
 anyhow = "1"
-ark-std = { version = "0.5", features = ["std"] }
-ark-ff = { version = "0.5", features = ["asm", "std"] }
-ark-serialize = "0.5"
 ark-crypto-primitives = { version = "0.5", features = ["merkle_tree"] }
+ark-ff = { version = "0.5", features = ["asm", "std"] }
 ark-poly = "0.5"
+ark-serialize = "0.5"
+ark-std = { version = "0.5", features = ["std"] }
 blake3 = "1.5.0"
-sha3 = "0.10"
-rand = "0.8"
 clap = { version = "4.4.17", features = ["derive"] }
+itertools = "0.14"
+rand = { version = "0.9.0", default-features = false, features = ["small_rng", "thread_rng"] }
+rayon = { version = "1.10.0", optional = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = [
-    "arkworks-algebra",
-] }
+sha3 = "0.10"
+spongefish = { git = "https://github.com/arkworks-rs/spongefish", features = ["arkworks-algebra"] }
 spongefish-pow = { git = "https://github.com/arkworks-rs/spongefish" }
-rayon = { version = "1.10.0", optional = true }
 thiserror = "2.0"
-itertools = "0.14"
 tracing = { version = "0.1.41", optional = true }
+
+whir = { path = "whir" }
+
+[features]
+asm = ["ark-ff/asm"]
