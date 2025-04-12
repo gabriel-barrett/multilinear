@@ -351,6 +351,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use super::*;
     use crate::expr::Expr;
 
@@ -358,7 +360,7 @@ mod tests {
     const J: usize = 2;
     const K: usize = 1;
 
-    fn pythagorean_cs() -> BQCS<I, J, K> {
+    fn pythagorean_trace() -> Trace<I, J> {
         let f = BaseField::from;
         // The first three are pythagorean triples
         // The fourth is the sum of the first two
@@ -380,12 +382,20 @@ mod tests {
             [39, 80, 89, 119].map(f),
             [65, 72, 97, 137].map(f),
         ]);
-        let trace = Trace::<I, J> { rows };
+        Trace::<I, J> { rows }
+    }
+
+    fn pythagorean_set() -> ConstraintSet<J, K> {
         let var = Expr::<J>::var;
         let expr1 = var(0) * var(0) + var(1) * var(1) - var(2) * var(2);
         let expr2 = (var(0) + var(1)) * (var(0) + var(1)) - var(3) * var(3);
         let expressions = [expr1, expr2].map(|x| x.to_quadratic().unwrap()).into();
-        let set = ConstraintSet::<J, K> { expressions };
+        ConstraintSet::<J, K> { expressions }
+    }
+
+    fn pythagorean_cs() -> BQCS<I, J, K> {
+        let trace = pythagorean_trace();
+        let set = pythagorean_set();
         BQCS::new(trace, set)
     }
 
@@ -403,5 +413,29 @@ mod tests {
         println!("{pols:#?}");
         let f = BaseField::from;
         system.verify_sumcheck(&pols, f(0)).unwrap();
+    }
+
+    #[test]
+    fn sumcheck_high_bench() {
+        let mut rows = pythagorean_trace().rows.to_vec();
+        const TOTAL_HEIGHT: usize = 10;
+        for _ in 0..TOTAL_HEIGHT - I {
+            rows.extend(rows.clone());
+        }
+        assert_eq!(rows.len(), 1 << TOTAL_HEIGHT);
+        let trace = Trace::<TOTAL_HEIGHT, J> {
+            rows: rows.try_into().unwrap(),
+        };
+        let set = pythagorean_set();
+        let system = BQCS::new(trace, set);
+        println!("GENERATING POLYNOMIAL");
+        let now = Instant::now();
+        let pols = system.generate_partial_polynomials();
+        println!("Generation took {:?}", now.elapsed());
+        let f = BaseField::from;
+        println!("VERIFYING");
+        let now = Instant::now();
+        system.verify_sumcheck(&pols, f(0)).unwrap();
+        println!("Verification took {:?}", now.elapsed());
     }
 }
