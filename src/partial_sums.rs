@@ -43,23 +43,34 @@ where
         col1: &[BaseField; J],
         col2: &[BaseField; J],
     ) -> BaseField {
-        let d = self.delta.evaluate_binary(row1, row2);
+        let d = self.delta.evaluate(row1, row2);
         let a = self.matrix.evaluate(col1, col2);
         let w1 = self.trace.evaluate(row1, col1);
         let w2 = self.trace.evaluate(row2, col2);
         d * a * w1 * w2
     }
 
-    pub fn evaluate_unary(
+    #[allow(clippy::too_many_arguments)]
+    pub fn evaluate_hypercube(
         &self,
-        row: &[BaseField; I],
-        col1: &[BaseField; J],
-        col2: &[BaseField; J],
+        row1: &[BaseField],
+        row2: &[BaseField],
+        row_bits: usize,
+        col1: &[BaseField],
+        col1_bits: usize,
+        col2: &[BaseField],
+        col2_bits: usize,
     ) -> BaseField {
-        let d = self.delta.evaluate_unary(row);
-        let a = self.matrix.evaluate(col1, col2);
-        let w1 = self.trace.evaluate(row, col1);
-        let w2 = self.trace.evaluate(row, col2);
+        let d = self.delta.evaluate_hypercube(row1, row2, row_bits);
+        let a = self
+            .matrix
+            .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
+        let w1 = self
+            .trace
+            .evaluate_hypercube(row1, row_bits, col1, col1_bits);
+        let w2 = self
+            .trace
+            .evaluate_hypercube(row2, row_bits, col2, col2_bits);
         d * a * w1 * w2
     }
 
@@ -69,12 +80,9 @@ where
     pub fn full_sum(&self) -> BaseField {
         let mut acc = BaseField::from(0);
         for i in 0..1 << I {
-            let i = to_hypercube_arr(i);
             for j1 in 0..1 << J {
-                let j1 = to_hypercube_arr(j1);
                 for j2 in 0..1 << J {
-                    let j2 = to_hypercube_arr(j2);
-                    acc += self.evaluate_unary(&i, &j1, &j2);
+                    acc += self.evaluate_hypercube(&[], &[], i, &[], j1, &[], j2);
                 }
             }
         }
@@ -88,17 +96,9 @@ where
         assert!(len <= I);
         let mut acc = BaseField::from(0);
         for i in 0..1 << (I - len) {
-            let mut index_i1 = row1.to_vec();
-            index_i1.extend(to_hypercube(i, I - len));
-            let index_i1 = (&index_i1[..]).try_into().unwrap();
-            let mut index_i2 = row2.to_vec();
-            index_i2.extend(to_hypercube(i, I - len));
-            let index_i2 = (&index_i2[..]).try_into().unwrap();
             for j1 in 0..1 << J {
-                let j1 = to_hypercube_arr(j1);
                 for j2 in 0..1 << J {
-                    let j2 = to_hypercube_arr(j2);
-                    acc += self.evaluate(index_i1, index_i2, &j1, &j2);
+                    acc += self.evaluate_hypercube(row1, row2, i, &[], j1, &[], j2);
                 }
             }
         }
@@ -118,14 +118,8 @@ where
         assert!(len <= J);
         let mut acc = BaseField::from(0);
         for j1 in 0..1 << (J - len) {
-            let mut index_j1 = col1.to_vec();
-            index_j1.extend(to_hypercube(j1, J - len));
-            let index_j1 = (&index_j1[..]).try_into().unwrap();
             for j2 in 0..1 << (J - len) {
-                let mut index_j2 = col2.to_vec();
-                index_j2.extend(to_hypercube(j2, J - len));
-                let index_j2 = (&index_j2[..]).try_into().unwrap();
-                acc += self.evaluate(row1, row2, &index_j1, &index_j2);
+                acc += self.evaluate_hypercube(row1, row2, 0, col1, j1, col2, j2);
             }
         }
         acc
@@ -314,26 +308,6 @@ impl SquarePolynomial {
         let [a, b, c] = self.coeffs;
         a + b * x + c * x * x
     }
-}
-
-fn to_hypercube(index: u64, len: usize) -> Vec<BaseField> {
-    let mut points = vec![BaseField::from(0); len];
-    (0..len).for_each(|i| {
-        if (index >> i) & 1 == 1 {
-            points[len - 1 - i] = BaseField::from(1);
-        }
-    });
-    points
-}
-
-fn to_hypercube_arr<const I: usize>(index: u64) -> [BaseField; I] {
-    let mut points = [BaseField::from(0); I];
-    (0..I).for_each(|i| {
-        if (index >> i) & 1 == 1 {
-            points[I - 1 - i] = BaseField::from(1);
-        }
-    });
-    points
 }
 
 fn generate_challenges<const I: usize, const J: usize, const K: usize>(
