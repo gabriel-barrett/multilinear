@@ -189,6 +189,36 @@ where
         }
         res
     }
+
+    pub fn evaluate_hypercube_row(
+        &self,
+        row: usize,
+        col: &[BaseField],
+        col_bits: usize,
+    ) -> BaseField {
+        let mut res = BaseField::from(0);
+        let coeffs = self.rows[row];
+        for (j, coeff) in coeffs.iter().enumerate() {
+            let col_mask = Var::<J>(j).evaluate_hypercube(col, col_bits);
+            res += *coeff * col_mask;
+        }
+        res
+    }
+
+    pub fn evaluate_hypercube_col(
+        &self,
+        row: &[BaseField],
+        row_bits: usize,
+        col: usize,
+    ) -> BaseField {
+        let mut res = BaseField::from(0);
+        for (i, coeffs) in self.rows.iter().enumerate() {
+            let coeff = coeffs[col];
+            let row_mask = Var::<I>(i).evaluate_hypercube(row, row_bits);
+            res += coeff * row_mask;
+        }
+        res
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
