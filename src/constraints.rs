@@ -180,11 +180,17 @@ where
         col_bits: usize,
     ) -> BaseField {
         let mut res = BaseField::from(0);
-        for (i, coeffs) in self.rows.iter().enumerate() {
+        let row_jump = 1 << (I - row.len());
+        let col_jump = 1 << (J - col.len());
+        for i in 0..1 << row.len() {
+            let i = i * row_jump + row_bits;
+            let coeffs = &self.rows[i];
             let row_mask = Var::<I>(i).evaluate_hypercube(row, row_bits);
-            for (j, coeff) in coeffs.iter().enumerate() {
+            for j in 0..1 << col.len() {
+                let j = j * col_jump + col_bits;
+                let coeff = coeffs[j];
                 let col_mask = Var::<J>(j).evaluate_hypercube(col, col_bits);
-                res += *coeff * row_mask * col_mask;
+                res += coeff * row_mask * col_mask;
             }
         }
         res

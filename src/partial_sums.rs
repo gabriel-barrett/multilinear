@@ -1,4 +1,5 @@
 use anyhow::{ensure, Context, Result};
+use ark_ff::AdditiveGroup;
 use std::ops::Add;
 
 use crate::{
@@ -45,9 +46,13 @@ where
     ) -> BaseField {
         let d = self.delta.evaluate(row1, row2);
         let a = self.matrix.evaluate(col1, col2);
+        let c = d * a;
+        if c == BaseField::ZERO {
+            return BaseField::ZERO;
+        }
         let w1 = self.trace.evaluate(row1, col1);
         let w2 = self.trace.evaluate(row2, col2);
-        d * a * w1 * w2
+        c * w1 * w2
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -65,13 +70,17 @@ where
         let a = self
             .matrix
             .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
+        let c = d * a;
+        if c == BaseField::ZERO {
+            return BaseField::ZERO;
+        }
         let w1 = self
             .trace
             .evaluate_hypercube(row1, row_bits, col1, col1_bits);
         let w2 = self
             .trace
             .evaluate_hypercube(row2, row_bits, col2, col2_bits);
-        d * a * w1 * w2
+        c * w1 * w2
     }
 
     pub fn evaluate_hypercube_row(
@@ -86,9 +95,13 @@ where
         let a = self
             .matrix
             .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
+        let c = d * a;
+        if c == BaseField::ZERO {
+            return BaseField::ZERO;
+        }
         let w1 = self.trace.evaluate_hypercube_row(row, col1, col1_bits);
         let w2 = self.trace.evaluate_hypercube_row(row, col2, col2_bits);
-        d * a * w1 * w2
+        c * w1 * w2
     }
 
     pub fn evaluate_hypercube_col(
@@ -101,16 +114,20 @@ where
     ) -> BaseField {
         let d = self.delta.evaluate_hypercube(row1, row2, row_bits);
         let a = self.matrix.evaluate_hypercube(&[], col1, &[], col2);
+        let c = d * a;
+        if c == BaseField::ZERO {
+            return BaseField::ZERO;
+        }
         let w1 = self.trace.evaluate_hypercube_col(row1, row_bits, col1);
         let w2 = self.trace.evaluate_hypercube_col(row2, row_bits, col2);
-        d * a * w1 * w2
+        c * w1 * w2
     }
 
     // Okay as it is linear in the height, but it is still width squared,
     // even if the constraint matrix usually has a sparse representation.
     // Needs further optimizations.
     pub fn full_sum(&self) -> BaseField {
-        let mut acc = BaseField::from(0);
+        let mut acc = BaseField::ZERO;
         for i in 0..1 << I {
             for j1 in 0..1 << J {
                 for j2 in 0..1 << J {
@@ -126,7 +143,7 @@ where
         assert_eq!(row2.len(), len);
         assert!(len > 0);
         assert!(len <= I);
-        let mut acc = BaseField::from(0);
+        let mut acc = BaseField::ZERO;
         for i in 0..1 << (I - len) {
             for j1 in 0..1 << J {
                 for j2 in 0..1 << J {
@@ -142,7 +159,7 @@ where
         assert_eq!(col2.len(), len);
         assert!(len > 0);
         assert!(len <= I);
-        let mut acc = BaseField::from(0);
+        let mut acc = BaseField::ZERO;
         for i in 0..1 << I {
             for j1 in 0..1 << (J - len) {
                 for j2 in 0..1 << (J - len) {
@@ -164,7 +181,7 @@ where
         assert_eq!(col2.len(), len);
         assert!(len > 0);
         assert!(len <= J);
-        let mut acc = BaseField::from(0);
+        let mut acc = BaseField::ZERO;
         for j1 in 0..1 << (J - len) {
             for j2 in 0..1 << (J - len) {
                 acc += self.evaluate_hypercube(row1, row2, 0, col1, j1, col2, j2);
@@ -184,7 +201,7 @@ where
         assert_eq!(row2.len(), len);
         assert!(len > 0);
         assert!(len <= I);
-        let mut acc = BaseField::from(0);
+        let mut acc = BaseField::ZERO;
         for i in 0..1 << (I - len) {
             acc += self.evaluate_hypercube(row1, row2, i, col1, 0, col2, 0);
         }
@@ -192,41 +209,6 @@ where
     }
 
     pub fn generate_partial_polynomials(&self) -> Vec<(BaseField, SquarePolynomial)> {
-        let mut rng = rand::thread_rng();
-        let mut acc = Vec::with_capacity(2 * I + 2 * J);
-
-        let mut index_i1 = Vec::with_capacity(I);
-        let mut index_i2 = Vec::with_capacity(I);
-        for _ in 0..I {
-            self.push_polynomials(
-                &mut index_i1,
-                &mut index_i2,
-                &mut rng,
-                &mut acc,
-                |index1, index2| self.partial_sum_rows(index1, index2),
-            );
-        }
-
-        let mut iter = acc.iter().map(|(r, _)| r);
-        let rows = [(); I].map(|_| (*iter.next().unwrap(), *iter.next().unwrap()));
-        let row1 = &rows.map(|(row, _)| row);
-        let row2 = &rows.map(|(_, row)| row);
-        let mut index_j1 = Vec::with_capacity(J);
-        let mut index_j2 = Vec::with_capacity(J);
-        for _ in 0..J {
-            self.push_polynomials(
-                &mut index_j1,
-                &mut index_j2,
-                &mut rng,
-                &mut acc,
-                |index1, index2| self.partial_sum_cols_fixed_row(row1, row2, index1, index2),
-            );
-        }
-
-        acc
-    }
-
-    pub fn generate_partial_polynomials_transposed(&self) -> Vec<(BaseField, SquarePolynomial)> {
         let mut rng = rand::thread_rng();
         let mut acc = Vec::with_capacity(2 * I + 2 * J);
 
@@ -261,6 +243,41 @@ where
         acc
     }
 
+    pub fn generate_partial_polynomials_transposed(&self) -> Vec<(BaseField, SquarePolynomial)> {
+        let mut rng = rand::thread_rng();
+        let mut acc = Vec::with_capacity(2 * I + 2 * J);
+
+        let mut index_i1 = Vec::with_capacity(I);
+        let mut index_i2 = Vec::with_capacity(I);
+        for _ in 0..I {
+            self.push_polynomials(
+                &mut index_i1,
+                &mut index_i2,
+                &mut rng,
+                &mut acc,
+                |index1, index2| self.partial_sum_rows(index1, index2),
+            );
+        }
+
+        let mut iter = acc.iter().map(|(r, _)| r);
+        let rows = [(); I].map(|_| (*iter.next().unwrap(), *iter.next().unwrap()));
+        let row1 = &rows.map(|(row, _)| row);
+        let row2 = &rows.map(|(_, row)| row);
+        let mut index_j1 = Vec::with_capacity(J);
+        let mut index_j2 = Vec::with_capacity(J);
+        for _ in 0..J {
+            self.push_polynomials(
+                &mut index_j1,
+                &mut index_j2,
+                &mut rng,
+                &mut acc,
+                |index1, index2| self.partial_sum_cols_fixed_row(row1, row2, index1, index2),
+            );
+        }
+
+        acc
+    }
+
     fn push_polynomials(
         &self,
         index1: &mut Vec<BaseField>,
@@ -269,25 +286,21 @@ where
         acc: &mut Vec<(BaseField, SquarePolynomial)>,
         partial_sum: impl Fn(&[BaseField], &[BaseField]) -> BaseField,
     ) {
-        fn modify_last(vec: &mut [BaseField], a: BaseField) {
+        fn modify_last(vec: &mut [BaseField], a: BaseField) -> &mut [BaseField] {
             let len = vec.len();
             vec[len - 1] = a;
+            vec
         }
 
         let f = BaseField::from;
         index1.push(f(-1));
         index2.push(f(0));
         let minus_one0 = partial_sum(index1, index2);
-        modify_last(index2, f(1));
-        let minus_one1 = partial_sum(index1, index2);
-        modify_last(index1, f(0));
-        let zero1 = partial_sum(index1, index2);
-        modify_last(index2, f(0));
-        let zero0 = partial_sum(index1, index2);
-        modify_last(index1, f(1));
-        let one0 = partial_sum(index1, index2);
-        modify_last(index2, f(1));
-        let one1 = partial_sum(index1, index2);
+        let minus_one1 = partial_sum(index1, modify_last(index2, f(1)));
+        let zero1 = partial_sum(modify_last(index1, f(0)), index2);
+        let zero0 = partial_sum(index1, modify_last(index2, f(0)));
+        let one0 = partial_sum(modify_last(index1, f(1)), index2);
+        let one1 = partial_sum(index1, modify_last(index2, f(1)));
         let pol10 = SquarePolynomialEval {
             minus_one: minus_one0,
             zero: zero0,
@@ -300,10 +313,8 @@ where
         };
         let pol1 = pol10 + pol11;
         let r1 = BaseField::from(rng.gen::<u64>());
-        modify_last(index1, r1);
-        modify_last(index2, f(-1));
         let pol2 = SquarePolynomialEval {
-            minus_one: partial_sum(index1, index2),
+            minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
             zero: pol10.evaluate(r1),
             one: pol11.evaluate(r1),
         };
@@ -319,8 +330,8 @@ where
         sum: BaseField,
     ) -> Result<()> {
         let mut r_iter = pols.iter().map(|(r, _)| r);
-        let rows = [(); I].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
         let cols = [(); J].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
+        let rows = [(); I].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
         let row1 = rows.map(|(row, _)| row);
         let row2 = rows.map(|(_, row)| row);
         let col1 = cols.map(|(col, _)| col);
@@ -334,8 +345,8 @@ where
         sum: BaseField,
     ) -> Result<()> {
         let mut r_iter = pols.iter().map(|(r, _)| r);
-        let cols = [(); J].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
         let rows = [(); I].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
+        let cols = [(); J].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
         let row1 = rows.map(|(row, _)| row);
         let row2 = rows.map(|(_, row)| row);
         let col1 = cols.map(|(col, _)| col);
@@ -369,7 +380,7 @@ where
             pol = *pol_next;
         }
         ensure!(
-            self.evaluate(&row1, &row2, &col1, &col2) == pol.evaluate(r),
+            self.evaluate(row1, row2, col1, col2) == pol.evaluate(r),
             "Does not match polynomial evaluation"
         );
         Ok(())
