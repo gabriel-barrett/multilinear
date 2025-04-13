@@ -1,4 +1,3 @@
-/*
 use std::time::Instant;
 
 use spongefish::DomainSeparator;
@@ -10,8 +9,8 @@ use whir::whir::{
 use whir::{
     crypto::merkle_tree::{keccak::KeccakMerkleTreeParams, HashCounter},
     parameters::{
-        default_max_pow, FoldType, FoldingFactor, MultivariateParameters, SoundnessType,
-        WhirParameters,
+        default_max_pow, FoldType, FoldingFactor, MultivariateParameters, ProtocolParameters,
+        SoundnessType,
     },
     poly_utils::{coeffs::CoefficientList, multilinear::MultilinearPoint},
     whir::{
@@ -51,7 +50,7 @@ pub fn run_pcs(
     let pow_bits = default_max_pow(num_variables, starting_rate);
 
     let mv_params = MultivariateParameters::<ExtField>::new(num_variables);
-    let whir_params = WhirParameters::<MerkleConfig, PowStrategy> {
+    let whir_params = ProtocolParameters::<MerkleConfig, PowStrategy> {
         initial_statement: true,
         security_level,
         pow_bits,
@@ -99,8 +98,8 @@ pub fn run_pcs(
         .unwrap();
     println!("Prover time: {:.1?}", whir_prover_time.elapsed());
     println!(
-        "Proof size: {:.1} KiB",
-        whir_proof_size(prover_state.narg_string(), &proof) as f64 / 1024.0
+        "Proof size: {:.1} bytes",
+        whir_proof_size(prover_state.narg_string(), &proof)
     );
 
     let statement_verifier = StatementVerifier::from_statement(&statement);
@@ -130,6 +129,8 @@ pub fn run_pcs(
 
 #[cfg(test)]
 mod tests {
+    use crate::polynomials::LagrangePolynomial;
+
     use super::*;
 
     fn default_conf() -> PCSConfig {
@@ -143,9 +144,9 @@ mod tests {
         }
     }
 
-    fn default_polynomial(num_variables: usize) -> CoefficientList<BaseField> {
+    fn default_polynomial(num_variables: usize) -> LagrangePolynomial<BaseField> {
         let num_coeffs = 1 << num_variables;
-        CoefficientList::new((0..num_coeffs).map(BaseField::from).collect())
+        LagrangePolynomial::new((0..num_coeffs).map(BaseField::from).collect())
     }
 
     fn default_points(
@@ -159,12 +160,15 @@ mod tests {
 
     #[test]
     fn pcs_test() {
-        let num_variables = 10;
-        let polynomial = default_polynomial(num_variables);
+        let num_variables = 20;
+        let lagrange = default_polynomial(num_variables);
+        let now = Instant::now();
+        let polynomial = lagrange.to_coefficient_list();
+        println!("Polynomial transformation time: {:?}", now.elapsed());
         let conf = default_conf();
         let num_evaluations = 1;
         let points = default_points(num_variables, num_evaluations);
         run_pcs(conf, polynomial, &points);
+        println!("Total time: {:?}", now.elapsed());
     }
 }
-*/
