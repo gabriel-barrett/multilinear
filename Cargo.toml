@@ -15,6 +15,7 @@ ark-std = { version = "0.5", features = ["std"] }
 bincode = { version = "2.0.0", features = ["serde", "alloc"] }
 blake3 = "1.5.0"
 clap = { version = "4.4.17", features = ["derive"] }
+derive_more = { version = "2.0.1", features = ["full"] }
 itertools = "0.14"
 rand = { version = "0.9.0", default-features = false, features = ["small_rng", "thread_rng"] }
 rayon = { version = "1.10.0", optional = true }

@@ -1,5 +1,4 @@
 use anyhow::{ensure, Context, Result};
-use ark_ff::AdditiveGroup;
 
 use crate::{
     constraints::BQCS,
@@ -18,7 +17,7 @@ where
     // even if the constraint matrix usually has a sparse representation.
     // Needs further optimizations.
     pub fn full_sum(&self) -> BaseField {
-        let mut acc = BaseField::ZERO;
+        let mut acc = BaseField::from(0);
         for i in 0..1 << I {
             for j1 in 0..1 << J {
                 for j2 in 0..1 << J {
@@ -34,7 +33,7 @@ where
         assert_eq!(row2.len(), len);
         assert!(len > 0);
         assert!(len <= I);
-        let mut acc = BaseField::ZERO;
+        let mut acc = BaseField::from(0);
         for i in 0..1 << (I - len) {
             for j1 in 0..1 << J {
                 for j2 in 0..1 << J {
@@ -50,7 +49,7 @@ where
         assert_eq!(col2.len(), len);
         assert!(len > 0);
         assert!(len <= I);
-        let mut acc = BaseField::ZERO;
+        let mut acc = BaseField::from(0);
         for i in 0..1 << I {
             for j1 in 0..1 << (J - len) {
                 for j2 in 0..1 << (J - len) {
@@ -72,7 +71,7 @@ where
         assert_eq!(col2.len(), len);
         assert!(len > 0);
         assert!(len <= J);
-        let mut acc = BaseField::ZERO;
+        let mut acc = BaseField::from(0);
         for j1 in 0..1 << (J - len) {
             for j2 in 0..1 << (J - len) {
                 acc += self.evaluate_hypercube(row1, row2, 0, col1, j1, col2, j2);
@@ -92,7 +91,7 @@ where
         assert_eq!(row2.len(), len);
         assert!(len > 0);
         assert!(len <= I);
-        let mut acc = BaseField::ZERO;
+        let mut acc = BaseField::from(0);
         for i in 0..1 << (I - len) {
             acc += self.evaluate_hypercube(row1, row2, i, col1, 0, col2, 0);
         }
@@ -372,7 +371,7 @@ mod tests {
     #[test]
     fn full_sum_test() {
         let system = pythagorean_cs();
-        assert_eq!(system.full_sum(), BaseField::ZERO);
+        assert_eq!(system.full_sum(), BaseField::from(0));
     }
 
     #[test]
@@ -380,7 +379,7 @@ mod tests {
         let system = pythagorean_cs();
         let pols = system.generate_partial_polynomials();
         println!("{pols:#?}");
-        system.verify_sumcheck(&pols, BaseField::ZERO).unwrap();
+        system.verify_sumcheck(&pols, BaseField::from(0)).unwrap();
     }
 
     #[test]
@@ -406,7 +405,7 @@ mod tests {
         println!("Generation took {:?}", now.elapsed());
         println!("VERIFYING");
         let now = Instant::now();
-        system.verify_sumcheck(&pols, BaseField::ZERO).unwrap();
+        system.verify_sumcheck(&pols, BaseField::from(0)).unwrap();
         println!("Verification took {:?}", now.elapsed());
     }
 
@@ -434,7 +433,7 @@ mod tests {
         println!("VERIFYING");
         let now = Instant::now();
         system
-            .verify_sumcheck_transposed(&pols, BaseField::ZERO)
+            .verify_sumcheck_transposed(&pols, BaseField::from(0))
             .unwrap();
         println!("Verification took {:?}", now.elapsed());
     }

@@ -3,6 +3,7 @@
 
 pub mod constraints;
 pub mod expr;
+pub mod fake_field;
 pub mod fields;
 pub mod hypercube;
 pub mod partial_sums;

@@ -1,5 +1,4 @@
 use crate::fields::{random_base, BaseField};
-use ark_ff::{AdditiveGroup, Field};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Var<const J: usize>(pub(crate) usize);
@@ -12,7 +11,7 @@ impl<const J: usize> Var<J> {
 
     pub fn evaluate(&self, points: &[BaseField; J]) -> BaseField {
         let index = self.0;
-        let one = BaseField::ONE;
+        let one = BaseField::from(1);
         let select = |i| {
             // Note: the points are read from last to first, since WHIR
             // is big endian and we want to follow the same convention
@@ -100,7 +99,7 @@ where
     [(); 1 << J]:,
 {
     pub fn evaluate(&self, row: &[BaseField; I], col: &[BaseField; J]) -> BaseField {
-        let mut res = BaseField::ZERO;
+        let mut res = BaseField::from(0);
         for (i, coeffs) in self.rows.iter().enumerate() {
             let row_mask = Var::<I>(i).evaluate(row);
             for (j, coeff) in coeffs.iter().enumerate() {
@@ -119,7 +118,7 @@ pub struct Delta<const I: usize> {
 
 impl<const I: usize> Delta<I> {
     pub fn evaluate(&self, b: &[BaseField; I], c: &[BaseField; I]) -> BaseField {
-        let one = BaseField::ONE;
+        let one = BaseField::from(1);
         let pass = |i| {
             let a = self.data[i];
             let b = b[i];
@@ -169,8 +168,8 @@ where
         let d = self.delta.evaluate(row1, row2);
         let a = self.matrix.evaluate(col1, col2);
         let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
+        if c == BaseField::from(0) {
+            return BaseField::from(0);
         }
         let w1 = self.trace.evaluate(row1, col1);
         let w2 = self.trace.evaluate(row2, col2);

@@ -1,12 +1,11 @@
-use std::ops::Add;
+use std::ops::{Add, Div, Mul, Sub, SubAssign};
 
-use ark_ff::Field;
 use whir::poly_utils::coeffs::CoefficientList;
 
 #[derive(Default, Debug, Clone)]
 pub struct LagrangePolynomial<F>(Vec<F>);
 
-impl<F: Field> LagrangePolynomial<F> {
+impl<F: SubAssign + Copy> LagrangePolynomial<F> {
     pub fn new(evals: Vec<F>) -> Self {
         let len = evals.len();
         assert!(len.is_power_of_two());
@@ -19,7 +18,7 @@ impl<F: Field> LagrangePolynomial<F> {
     }
 }
 
-fn mobius_inversion<F: Field>(evals: Vec<F>) -> Vec<F> {
+fn mobius_inversion<F: SubAssign + Copy>(evals: Vec<F>) -> Vec<F> {
     let n = evals.len().trailing_zeros(); // Assumes evals.len() == 2^n
     let mut coeffs = evals;
 
@@ -42,7 +41,7 @@ pub struct SquarePolynomialEval<F> {
     pub minus_one: F,
 }
 
-impl<F: Field> Add for SquarePolynomialEval<F> {
+impl<F: Add<Output = F>> Add for SquarePolynomialEval<F> {
     type Output = SquarePolynomialEval<F>;
     fn add(self, other: SquarePolynomialEval<F>) -> SquarePolynomialEval<F> {
         SquarePolynomialEval {
@@ -53,7 +52,10 @@ impl<F: Field> Add for SquarePolynomialEval<F> {
     }
 }
 
-impl<F: Field> SquarePolynomialEval<F> {
+impl<
+        F: Copy + From<u32> + Mul<Output = F> + Add<Output = F> + Sub<Output = F> + Div<Output = F>,
+    > SquarePolynomialEval<F>
+{
     pub fn to_polynomial(self) -> SquarePolynomial<F> {
         let a = self.zero;
         let b = (self.one - self.minus_one) / F::from(2);
@@ -71,18 +73,18 @@ pub struct SquarePolynomial<F> {
     pub coeffs: [F; 3],
 }
 
-impl<F: Field> std::fmt::Debug for SquarePolynomial<F> {
+impl<F: std::fmt::Debug> std::fmt::Debug for SquarePolynomial<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let [a, b, c] = self.coeffs;
-        write!(f, "{} + {}*X + {}*X^2", a, b, c)?;
+        let [a, b, c] = &self.coeffs;
+        write!(f, "{:?} + {:?}*X + {:?}*X^2", a, b, c)?;
         Ok(())
     }
 }
 
-impl<F: Field> SquarePolynomial<F> {
+impl<F: Copy + Add<Output = F> + Mul<Output = F>> SquarePolynomial<F> {
     pub fn evaluate(&self, x: F) -> F {
         let [a, b, c] = self.coeffs;
-        a + b * x + c * x * x
+        a + x * (b + x * c)
     }
 }
 

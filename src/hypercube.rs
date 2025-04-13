@@ -1,5 +1,3 @@
-use ark_ff::AdditiveGroup;
-
 use crate::{
     constraints::{ConstraintSetMatrix, Delta, LinearCombination, Quadratic, Trace, Var, BQCS},
     fields::BaseField,
@@ -19,9 +17,9 @@ impl<const J: usize> Var<J> {
             // Note: the points are read from last to first, since WHIR
             // is big endian and we want to follow the same convention
             if (index >> (J - 1 - i)) & 1 == 1 {
-                acc *= point;
+                acc *= *point;
             } else {
-                acc *= one - point;
+                acc *= one - *point;
             }
         }
         acc
@@ -181,8 +179,8 @@ where
             .matrix
             .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
         let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
+        if c == BaseField::from(0) {
+            return BaseField::from(0);
         }
         let w1 = self
             .trace
@@ -206,8 +204,8 @@ where
             .matrix
             .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
         let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
+        if c == BaseField::from(0) {
+            return BaseField::from(0);
         }
         let w1 = self.trace.evaluate_hypercube_row(row, col1, col1_bits);
         let w2 = self.trace.evaluate_hypercube_row(row, col2, col2_bits);
@@ -225,8 +223,8 @@ where
         let d = self.delta.evaluate_hypercube(row1, row2, row_bits);
         let a = self.matrix.evaluate_hypercube(&[], col1, &[], col2);
         let c = d * a;
-        if c == BaseField::ZERO {
-            return BaseField::ZERO;
+        if c == BaseField::from(0) {
+            return BaseField::from(0);
         }
         let w1 = self.trace.evaluate_hypercube_col(row1, row_bits, col1);
         let w2 = self.trace.evaluate_hypercube_col(row2, row_bits, col2);

@@ -10,9 +10,9 @@
 //! * 8 is the 64th root of unity which opens up potential for optimized FFT
 //!   implementations.
 
-use ark_ff::{BigInt, Fp, Fp2, Fp2Config, PrimeField, SqrtPrecomputation, Zero, fields::Fp64};
+use ark_ff::{fields::Fp64, BigInt, Fp, Fp2, Fp2Config, PrimeField, SqrtPrecomputation, Zero};
 use core::marker::PhantomData;
-use rand::{Rng, rngs::ThreadRng};
+use rand::{rngs::ThreadRng, Rng};
 
 pub fn random_base(rng: &mut ThreadRng) -> BaseField {
     BaseField::from(rng.random::<u64>())
@@ -27,7 +27,7 @@ pub type ExtField = Fp2<F2Config64>;
 
 pub struct F2Config64;
 impl Fp2Config for F2Config64 {
-    type Fp = BaseField;
+    type Fp = Fp64<FpParams>;
 
     const NONRESIDUE: Self::Fp = Fp::<FpParams, 1>(BigInt([7]), PhantomData);
 
@@ -132,7 +132,7 @@ impl ark_ff::FpConfig<1> for FpParams {
 
 /// Converts a value into Montgomery representation
 #[inline]
-const fn into_mont(value: u64) -> BaseField {
+const fn into_mont(value: u64) -> Fp64<FpParams> {
     ark_ff::Fp(BigInt([mont_red(value as u128 * R2 as u128)]), PhantomData)
 }
 
