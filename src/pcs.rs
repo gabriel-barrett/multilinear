@@ -19,7 +19,7 @@ use whir::{
     },
 };
 
-use crate::{BaseField, ExtField};
+use crate::fields::{BaseField, ExtField};
 
 pub type PowStrategy = Blake3PoW;
 pub type MerkleConfig = KeccakMerkleTreeParams<ExtField>;

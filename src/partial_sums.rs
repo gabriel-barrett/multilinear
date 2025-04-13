@@ -3,10 +3,10 @@ use ark_ff::AdditiveGroup;
 
 use crate::{
     constraints::BQCS,
+    fields::{random_base, BaseField},
     polynomials::{SquarePolynomial, SquarePolynomialEval},
-    BaseField,
 };
-use rand::{rngs::ThreadRng, Rng};
+use rand::rngs::ThreadRng;
 
 impl<const I: usize, const J: usize, const K: usize> BQCS<I, J, K>
 where
@@ -199,13 +199,13 @@ where
             one: one1,
         };
         let pol1 = pol10 + pol11;
-        let r1 = BaseField::from(rng.random::<u64>());
+        let r1 = random_base(rng);
         let pol2 = SquarePolynomialEval {
             minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
             zero: pol10.evaluate(r1),
             one: pol11.evaluate(r1),
         };
-        let r2 = BaseField::from(rng.random::<u64>());
+        let r2 = random_base(rng);
         modify_last(index2, r2);
         acc.push((r1, pol1.to_polynomial()));
         acc.push((r2, pol2.to_polynomial()));
@@ -234,13 +234,13 @@ where
             zero,
             one,
         };
-        let r1 = BaseField::from(rng.random::<u64>());
+        let r1 = random_base(rng);
         let pol2 = SquarePolynomialEval {
             minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
             zero: partial_sum(index1, modify_last(index2, f(0))),
             one: partial_sum(index1, modify_last(index2, f(1))),
         };
-        let r2 = BaseField::from(rng.random::<u64>());
+        let r2 = random_base(rng);
         modify_last(index2, r2);
         acc.push((r1, pol1.to_polynomial()));
         acc.push((r2, pol2.to_polynomial()));
@@ -310,7 +310,7 @@ where
 }
 
 // Auxiliary function
-fn modify_last(vec: &mut [BaseField], a: BaseField) -> &mut [BaseField] {
+fn modify_last<T>(vec: &mut [T], a: T) -> &mut [T] {
     let len = vec.len();
     vec[len - 1] = a;
     vec
@@ -371,9 +371,8 @@ mod tests {
 
     #[test]
     fn full_sum_test() {
-        let f = BaseField::from;
         let system = pythagorean_cs();
-        assert_eq!(system.full_sum(), f(0));
+        assert_eq!(system.full_sum(), BaseField::ZERO);
     }
 
     #[test]
@@ -381,8 +380,7 @@ mod tests {
         let system = pythagorean_cs();
         let pols = system.generate_partial_polynomials();
         println!("{pols:#?}");
-        let f = BaseField::from;
-        system.verify_sumcheck(&pols, f(0)).unwrap();
+        system.verify_sumcheck(&pols, BaseField::ZERO).unwrap();
     }
 
     #[test]
@@ -406,10 +404,9 @@ mod tests {
         let now = Instant::now();
         let pols = system.generate_partial_polynomials();
         println!("Generation took {:?}", now.elapsed());
-        let f = BaseField::from;
         println!("VERIFYING");
         let now = Instant::now();
-        system.verify_sumcheck(&pols, f(0)).unwrap();
+        system.verify_sumcheck(&pols, BaseField::ZERO).unwrap();
         println!("Verification took {:?}", now.elapsed());
     }
 
@@ -434,10 +431,11 @@ mod tests {
         let now = Instant::now();
         let pols = system.generate_partial_polynomials_transposed();
         println!("Generation took {:?}", now.elapsed());
-        let f = BaseField::from;
         println!("VERIFYING");
         let now = Instant::now();
-        system.verify_sumcheck_transposed(&pols, f(0)).unwrap();
+        system
+            .verify_sumcheck_transposed(&pols, BaseField::ZERO)
+            .unwrap();
         println!("Verification took {:?}", now.elapsed());
     }
 }

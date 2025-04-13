@@ -2,7 +2,7 @@ use ark_ff::AdditiveGroup;
 
 use crate::{
     constraints::{ConstraintSetMatrix, Delta, LinearCombination, Quadratic, Trace, Var, BQCS},
-    BaseField,
+    fields::BaseField,
 };
 
 impl<const J: usize> Var<J> {
@@ -99,9 +99,8 @@ where
             let row_mask = Var::<I>(i).evaluate_hypercube(row, row_bits);
             for j in 0..1 << col.len() {
                 let j = j * col_jump + col_bits;
-                let coeff = coeffs[j];
                 let col_mask = Var::<J>(j).evaluate_hypercube(col, col_bits);
-                res += coeff * row_mask * col_mask;
+                res += coeffs[j] * row_mask * col_mask;
             }
         }
         res
@@ -130,9 +129,8 @@ where
     ) -> BaseField {
         let mut res = BaseField::from(0);
         for (i, coeffs) in self.rows.iter().enumerate() {
-            let coeff = coeffs[col];
             let row_mask = Var::<I>(i).evaluate_hypercube(row, row_bits);
-            res += coeff * row_mask;
+            res += coeffs[col] * row_mask;
         }
         res
     }
@@ -239,6 +237,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fields::random_base;
     use rand::Rng;
 
     fn to_hypercube(index: u64, len: usize) -> Vec<BaseField> {
@@ -253,13 +252,13 @@ mod tests {
 
     #[test]
     fn var_hypercube_test() {
-        let mut rng = rand::rng();
+        let rng = &mut rand::rng();
         const J: usize = 16;
         const L: usize = 7;
         let var = Var::<J>::new(rng.random_range(0..1 << J));
         let mask = (1 << (J - L)) - 1;
         let bits = var.0 & mask;
-        let points = [(); L].map(|_| BaseField::from(rng.random::<u64>()));
+        let points = [(); L].map(|_| random_base(rng));
         let eval_hypercube = var.evaluate_hypercube(&points, bits);
 
         let mut points = points.to_vec();
@@ -272,14 +271,14 @@ mod tests {
 
     #[test]
     fn delta_hypercube_test() {
-        let mut rng = rand::rng();
+        let rng = &mut rand::rng();
         const J: usize = 16;
         const L: usize = 7;
         let delta = Delta {
-            data: [(); J].map(|_| BaseField::from(rng.random::<u64>())),
+            data: [(); J].map(|_| random_base(rng)),
         };
-        let points1 = [(); L].map(|_| BaseField::from(rng.random::<u64>()));
-        let points2 = [(); L].map(|_| BaseField::from(rng.random::<u64>()));
+        let points1 = [(); L].map(|_| random_base(rng));
+        let points2 = [(); L].map(|_| random_base(rng));
         let bits = rng.random_range(0..1 << (J - L));
         let eval_hypercube = delta.evaluate_hypercube(&points1, &points2, bits);
 

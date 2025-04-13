@@ -1,6 +1,5 @@
-use crate::BaseField;
+use crate::fields::{random_base, BaseField};
 use ark_ff::{AdditiveGroup, Field};
-use rand::Rng;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Var<const J: usize>(pub(crate) usize);
@@ -186,9 +185,9 @@ where
     [(); 1 << I]:,
     [(); 1 << J]:,
 {
-    let mut rng = rand::rng();
-    let random_i = [(); I].map(|_| BaseField::from(rng.random::<u64>()));
-    let random_k = [(); K].map(|_| BaseField::from(rng.random::<u64>()));
+    let rng = &mut rand::rng();
+    let random_i = [(); I].map(|_| random_base(rng));
+    let random_k = [(); K].map(|_| random_base(rng));
     (random_i, random_k)
 }
 

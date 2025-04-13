@@ -88,7 +88,7 @@ impl<F: Field> SquarePolynomial<F> {
 
 #[cfg(test)]
 mod tests {
-    use crate::BaseField;
+    use crate::fields::BaseField;
 
     use super::*;
     use whir::poly_utils::multilinear::MultilinearPoint;

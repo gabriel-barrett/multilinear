@@ -2,7 +2,7 @@ use std::ops::{Add, Mul, Sub};
 
 use crate::{
     constraints::{LinearCombination, Quadratic, Var},
-    BaseField,
+    fields::BaseField,
 };
 
 pub enum Expr<const J: usize> {
