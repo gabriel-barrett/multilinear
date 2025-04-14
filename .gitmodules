@@ -1,0 +1,6 @@
+[submodule "Plonky3"]
+	path = Plonky3
+	url = https://github.com/Plonky3/Plonky3
+[submodule "whir"]
+	path = whir
+	url = https://github.com/WizardOfMenlo/whir.git
