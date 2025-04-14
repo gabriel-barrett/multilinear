@@ -112,9 +112,11 @@ where
     ) -> BaseField {
         let mut res = BaseField::from(0);
         let coeffs = self.rows[row];
-        for (j, coeff) in coeffs.iter().enumerate() {
+        let col_jump = 1 << (J - col.len());
+        for j in 0..1 << col.len() {
+            let j = j * col_jump + col_bits;
             let col_mask = Var::<J>(j).evaluate_hypercube(col, col_bits);
-            res += *coeff * col_mask;
+            res += coeffs[j] * col_mask;
         }
         res
     }
@@ -125,8 +127,11 @@ where
         row_bits: usize,
         col: usize,
     ) -> BaseField {
+        let row_jump = 1 << (I - row.len());
         let mut res = BaseField::from(0);
-        for (i, coeffs) in self.rows.iter().enumerate() {
+        for i in 0..1 << row.len() {
+            let i = i * row_jump + row_bits;
+            let coeffs = &self.rows[i];
             let row_mask = Var::<I>(i).evaluate_hypercube(row, row_bits);
             res += coeffs[col] * row_mask;
         }
@@ -188,46 +193,6 @@ where
         let w2 = self
             .trace
             .evaluate_hypercube(row2, row_bits, col2, col2_bits);
-        c * w1 * w2
-    }
-
-    pub fn evaluate_hypercube_row(
-        &self,
-        row: usize,
-        col1: &[BaseField],
-        col1_bits: usize,
-        col2: &[BaseField],
-        col2_bits: usize,
-    ) -> BaseField {
-        let d = self.delta.evaluate_hypercube(&[], &[], row);
-        let a = self
-            .matrix
-            .evaluate_hypercube(col1, col1_bits, col2, col2_bits);
-        let c = d * a;
-        if c == BaseField::from(0) {
-            return BaseField::from(0);
-        }
-        let w1 = self.trace.evaluate_hypercube_row(row, col1, col1_bits);
-        let w2 = self.trace.evaluate_hypercube_row(row, col2, col2_bits);
-        c * w1 * w2
-    }
-
-    pub fn evaluate_hypercube_col(
-        &self,
-        row1: &[BaseField],
-        row2: &[BaseField],
-        row_bits: usize,
-        col1: usize,
-        col2: usize,
-    ) -> BaseField {
-        let d = self.delta.evaluate_hypercube(row1, row2, row_bits);
-        let a = self.matrix.evaluate_hypercube(&[], col1, &[], col2);
-        let c = d * a;
-        if c == BaseField::from(0) {
-            return BaseField::from(0);
-        }
-        let w1 = self.trace.evaluate_hypercube_col(row1, row_bits, col1);
-        let w2 = self.trace.evaluate_hypercube_col(row2, row_bits, col2);
         c * w1 * w2
     }
 }

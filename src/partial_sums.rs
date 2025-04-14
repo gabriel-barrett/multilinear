@@ -35,9 +35,16 @@ where
         assert!(len <= I);
         let mut acc = BaseField::from(0);
         for i in 0..1 << (I - len) {
+            let d = self.delta.evaluate_hypercube(row1, row2, i);
+            if d == BaseField::from(0) {
+                continue;
+            }
             for j1 in 0..1 << J {
+                let w1 = self.trace.evaluate_hypercube_col(row1, i, j1);
                 for j2 in 0..1 << J {
-                    acc += self.evaluate_hypercube_col(row1, row2, i, j1, j2);
+                    let w2 = self.trace.evaluate_hypercube_col(row2, i, j2);
+                    let a = self.matrix.evaluate_hypercube(&[], j1, &[], j2);
+                    acc += d * a * w1 * w2
                 }
             }
         }
@@ -48,12 +55,19 @@ where
         let len = col1.len();
         assert_eq!(col2.len(), len);
         assert!(len > 0);
-        assert!(len <= I);
+        assert!(len <= J);
         let mut acc = BaseField::from(0);
         for i in 0..1 << I {
+            let d = self.delta.evaluate_hypercube(&[], &[], i);
+            if d == BaseField::from(0) {
+                continue;
+            }
             for j1 in 0..1 << (J - len) {
+                let w1 = self.trace.evaluate_hypercube_row(i, col1, j1);
                 for j2 in 0..1 << (J - len) {
-                    acc += self.evaluate_hypercube_row(i, col1, j1, col2, j2);
+                    let w2 = self.trace.evaluate_hypercube_row(i, col2, j2);
+                    let a = self.matrix.evaluate_hypercube(col1, j1, col2, j2);
+                    acc += d * a * w1 * w2;
                 }
             }
         }
@@ -72,9 +86,16 @@ where
         assert!(len > 0);
         assert!(len <= J);
         let mut acc = BaseField::from(0);
+        let d = self.delta.evaluate_hypercube(row1, row2, 0);
+        if d == BaseField::from(0) {
+            return BaseField::from(0);
+        }
         for j1 in 0..1 << (J - len) {
+            let w1 = self.trace.evaluate_hypercube(row1, 0, col1, j1);
             for j2 in 0..1 << (J - len) {
-                acc += self.evaluate_hypercube(row1, row2, 0, col1, j1, col2, j2);
+                let a = self.matrix.evaluate_hypercube(col1, j1, col2, j2);
+                let w2 = self.trace.evaluate_hypercube(row2, 0, col2, j2);
+                acc += d * a * w1 * w2
             }
         }
         acc
@@ -92,8 +113,15 @@ where
         assert!(len > 0);
         assert!(len <= I);
         let mut acc = BaseField::from(0);
+        let a = self.matrix.evaluate_hypercube(col1, 0, col2, 0);
         for i in 0..1 << (I - len) {
-            acc += self.evaluate_hypercube(row1, row2, i, col1, 0, col2, 0);
+            let d = self.delta.evaluate_hypercube(row1, row2, i);
+            if d == BaseField::from(0) {
+                continue;
+            }
+            let w1 = self.trace.evaluate_hypercube(row1, i, col1, 0);
+            let w2 = self.trace.evaluate_hypercube(row2, i, col2, 0);
+            acc += d * a * w1 * w2
         }
         acc
     }
@@ -412,7 +440,7 @@ mod tests {
     #[test]
     fn sumcheck_high_transposed_bench() {
         let mut rows = pythagorean_trace().rows.to_vec();
-        const TOTAL_LOG_HEIGHT: usize = 10;
+        const TOTAL_LOG_HEIGHT: usize = 18;
         for _ in 0..TOTAL_LOG_HEIGHT - I {
             rows.extend(rows.clone());
         }
