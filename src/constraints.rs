@@ -1,3 +1,5 @@
+use std::array;
+
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
@@ -67,12 +69,26 @@ where
 {
     pub set: ConstraintSet<J, K>,
     pub random_k: [BaseField; K],
+    constraint_masks: [BaseField; 1 << K],
 }
 
 impl<const J: usize, const K: usize> ConstraintSetMatrix<J, K>
 where
     [(); 1 << K]:,
 {
+    pub fn new(set: ConstraintSet<J, K>, random_k: [BaseField; K]) -> Self {
+        let constraint_masks = array::from_fn(|k| Var::<K>(k).evaluate(&random_k));
+        Self {
+            set,
+            random_k,
+            constraint_masks,
+        }
+    }
+
+    pub fn constraint_masks(&self) -> &[BaseField; 1 << K] {
+        &self.constraint_masks
+    }
+
     pub fn evaluate(&self, col1: &[BaseField; J], col2: &[BaseField; J]) -> BaseField {
         let random_k = &self.random_k;
         self.set
@@ -154,13 +170,17 @@ where
     pub fn new(trace: Trace<I, J>, set: ConstraintSet<J, K>) -> Self {
         let (rng, random_i, random_k) = generate_cs_challenges();
         let delta = Delta { data: random_i };
-        let matrix = ConstraintSetMatrix { set, random_k };
+        let matrix = ConstraintSetMatrix::new(set, random_k);
         Self {
             delta,
             trace,
             matrix,
             rng,
         }
+    }
+
+    pub fn random(&mut self) -> BaseField {
+        random_base(&mut self.rng)
     }
 
     pub fn evaluate(
