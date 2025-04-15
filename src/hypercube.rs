@@ -201,7 +201,8 @@ where
 mod tests {
     use super::*;
     use crate::fields::random_base;
-    use rand::Rng;
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha8Rng;
 
     fn to_hypercube(index: u64, len: usize) -> Vec<BaseField> {
         let mut points = vec![BaseField::from(0); len];
@@ -215,7 +216,7 @@ mod tests {
 
     #[test]
     fn var_hypercube_test() {
-        let rng = &mut rand::rng();
+        let rng = &mut ChaCha8Rng::seed_from_u64(0);
         const J: usize = 16;
         const L: usize = 7;
         let var = Var::<J>::new(rng.random_range(0..1 << J));
@@ -234,7 +235,7 @@ mod tests {
 
     #[test]
     fn delta_hypercube_test() {
-        let rng = &mut rand::rng();
+        let rng = &mut ChaCha8Rng::seed_from_u64(0);
         const J: usize = 16;
         const L: usize = 7;
         let delta = Delta {

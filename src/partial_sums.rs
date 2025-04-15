@@ -1,11 +1,11 @@
 use anyhow::{ensure, Context, Result};
+use rand_chacha::ChaCha8Rng;
 
 use crate::{
     constraints::BQCS,
     fields::{random_base, BaseField},
     polynomials::{SquarePolynomial, SquarePolynomialEval},
 };
-use rand::rngs::ThreadRng;
 
 impl<const I: usize, const J: usize, const K: usize> BQCS<I, J, K>
 where
@@ -126,9 +126,9 @@ where
         acc
     }
 
-    pub fn generate_partial_polynomials(&self) -> Vec<(BaseField, SquarePolynomial<BaseField>)> {
-        let mut rng = rand::rng();
+    pub fn generate_partial_polynomials(&mut self) -> Vec<SquarePolynomial<BaseField>> {
         let mut acc = Vec::with_capacity(2 * I + 2 * J);
+        let mut r_acc = Vec::with_capacity(2 * I + 2 * J);
 
         let mut index_j1 = Vec::with_capacity(J);
         let mut index_j2 = Vec::with_capacity(J);
@@ -136,13 +136,13 @@ where
             self.push_polynomials(
                 &mut index_j1,
                 &mut index_j2,
-                &mut rng,
                 &mut acc,
-                |index1, index2| self.partial_sum_cols(index1, index2),
+                &mut r_acc,
+                |cs, index1, index2| cs.partial_sum_cols(index1, index2),
             );
         }
 
-        let mut iter = acc.iter().map(|(r, _)| r);
+        let mut iter = r_acc.iter();
         let cols = [(); J].map(|_| (*iter.next().unwrap(), *iter.next().unwrap()));
         let col1 = &cols.map(|(col, _)| col);
         let col2 = &cols.map(|(_, col)| col);
@@ -152,20 +152,18 @@ where
             self.push_polynomials(
                 &mut index_i1,
                 &mut index_i2,
-                &mut rng,
                 &mut acc,
-                |index1, index2| self.partial_sum_rows_fixed_col(index1, index2, col1, col2),
+                &mut r_acc,
+                |cs, index1, index2| cs.partial_sum_rows_fixed_col(index1, index2, col1, col2),
             );
         }
 
         acc
     }
 
-    pub fn generate_partial_polynomials_transposed(
-        &self,
-    ) -> Vec<(BaseField, SquarePolynomial<BaseField>)> {
-        let mut rng = rand::rng();
+    pub fn generate_partial_polynomials_transposed(&mut self) -> Vec<SquarePolynomial<BaseField>> {
         let mut acc = Vec::with_capacity(2 * I + 2 * J);
+        let mut r_acc = Vec::with_capacity(2 * I + 2 * J);
 
         let mut index_i1 = Vec::with_capacity(I);
         let mut index_i2 = Vec::with_capacity(I);
@@ -173,13 +171,13 @@ where
             self.push_polynomials(
                 &mut index_i1,
                 &mut index_i2,
-                &mut rng,
                 &mut acc,
-                |index1, index2| self.partial_sum_rows(index1, index2),
+                &mut r_acc,
+                |cs, index1, index2| cs.partial_sum_rows(index1, index2),
             );
         }
 
-        let mut iter = acc.iter().map(|(r, _)| r);
+        let mut iter = r_acc.iter();
         let rows = [(); I].map(|_| (*iter.next().unwrap(), *iter.next().unwrap()));
         let row1 = &rows.map(|(row, _)| row);
         let row2 = &rows.map(|(_, row)| row);
@@ -189,9 +187,9 @@ where
             self.push_polynomials(
                 &mut index_j1,
                 &mut index_j2,
-                &mut rng,
                 &mut acc,
-                |index1, index2| self.partial_sum_cols_fixed_row(row1, row2, index1, index2),
+                &mut r_acc,
+                |cs, index1, index2| cs.partial_sum_cols_fixed_row(row1, row2, index1, index2),
             );
         }
 
@@ -199,22 +197,22 @@ where
     }
 
     fn push_polynomials(
-        &self,
+        &mut self,
         index1: &mut Vec<BaseField>,
         index2: &mut Vec<BaseField>,
-        rng: &mut ThreadRng,
-        acc: &mut Vec<(BaseField, SquarePolynomial<BaseField>)>,
-        partial_sum: impl Fn(&[BaseField], &[BaseField]) -> BaseField,
+        acc: &mut Vec<SquarePolynomial<BaseField>>,
+        r_acc: &mut Vec<BaseField>,
+        partial_sum: impl Fn(&Self, &[BaseField], &[BaseField]) -> BaseField,
     ) {
         let f = BaseField::from;
         index1.push(f(-1));
         index2.push(f(0));
-        let minus_one0 = partial_sum(index1, index2);
-        let minus_one1 = partial_sum(index1, modify_last(index2, f(1)));
-        let zero1 = partial_sum(modify_last(index1, f(0)), index2);
-        let zero0 = partial_sum(index1, modify_last(index2, f(0)));
-        let one0 = partial_sum(modify_last(index1, f(1)), index2);
-        let one1 = partial_sum(index1, modify_last(index2, f(1)));
+        let minus_one0 = partial_sum(self, index1, index2);
+        let minus_one1 = partial_sum(self, index1, modify_last(index2, f(1)));
+        let zero1 = partial_sum(self, modify_last(index1, f(0)), index2);
+        let zero0 = partial_sum(self, index1, modify_last(index2, f(0)));
+        let one0 = partial_sum(self, modify_last(index1, f(1)), index2);
+        let one1 = partial_sum(self, index1, modify_last(index2, f(1)));
         let pol10 = SquarePolynomialEval {
             minus_one: minus_one0,
             zero: zero0,
@@ -226,86 +224,122 @@ where
             one: one1,
         };
         let pol1 = pol10 + pol11;
-        let r1 = random_base(rng);
+        let r1 = random_base(&mut self.rng);
         let pol2 = SquarePolynomialEval {
-            minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
+            minus_one: partial_sum(self, modify_last(index1, r1), modify_last(index2, f(-1))),
             zero: pol10.evaluate(r1),
             one: pol11.evaluate(r1),
         };
-        let r2 = random_base(rng);
+        let r2 = random_base(&mut self.rng);
         modify_last(index2, r2);
-        acc.push((r1, pol1.to_polynomial()));
-        acc.push((r2, pol2.to_polynomial()));
+        acc.push(pol1.to_polynomial());
+        acc.push(pol2.to_polynomial());
+        r_acc.push(r1);
+        r_acc.push(r2);
     }
 
     #[allow(dead_code)]
     fn push_polynomials_no_opt(
-        &self,
+        &mut self,
         index1: &mut Vec<BaseField>,
         index2: &mut Vec<BaseField>,
-        rng: &mut ThreadRng,
-        acc: &mut Vec<(BaseField, SquarePolynomial<BaseField>)>,
-        partial_sum: impl Fn(&[BaseField], &[BaseField]) -> BaseField,
+        acc: &mut Vec<SquarePolynomial<BaseField>>,
+        r_acc: &mut Vec<BaseField>,
+        partial_sum: impl Fn(&Self, &[BaseField], &[BaseField]) -> BaseField,
     ) {
         let f = BaseField::from;
         index1.push(f(-1));
         index2.push(f(0));
-        let minus_one =
-            partial_sum(index1, index2) + partial_sum(index1, modify_last(index2, f(1)));
-        let zero = partial_sum(modify_last(index1, f(0)), index2)
-            + partial_sum(index1, modify_last(index2, f(0)));
-        let one = partial_sum(modify_last(index1, f(1)), index2)
-            + partial_sum(index1, modify_last(index2, f(1)));
+        let minus_one = partial_sum(self, index1, index2)
+            + partial_sum(self, index1, modify_last(index2, f(1)));
+        let zero = partial_sum(self, modify_last(index1, f(0)), index2)
+            + partial_sum(self, index1, modify_last(index2, f(0)));
+        let one = partial_sum(self, modify_last(index1, f(1)), index2)
+            + partial_sum(self, index1, modify_last(index2, f(1)));
         let pol1 = SquarePolynomialEval {
             minus_one,
             zero,
             one,
         };
-        let r1 = random_base(rng);
+        let r1 = random_base(&mut self.rng);
         let pol2 = SquarePolynomialEval {
-            minus_one: partial_sum(modify_last(index1, r1), modify_last(index2, f(-1))),
-            zero: partial_sum(index1, modify_last(index2, f(0))),
-            one: partial_sum(index1, modify_last(index2, f(1))),
+            minus_one: partial_sum(self, modify_last(index1, r1), modify_last(index2, f(-1))),
+            zero: partial_sum(self, index1, modify_last(index2, f(0))),
+            one: partial_sum(self, index1, modify_last(index2, f(1))),
         };
-        let r2 = random_base(rng);
+        let r2 = random_base(&mut self.rng);
         modify_last(index2, r2);
-        acc.push((r1, pol1.to_polynomial()));
-        acc.push((r2, pol2.to_polynomial()));
+        acc.push(pol1.to_polynomial());
+        acc.push(pol2.to_polynomial());
+        r_acc.push(r1);
+        r_acc.push(r2);
     }
 
     pub fn verify_sumcheck(
         &self,
-        pols: &[(BaseField, SquarePolynomial<BaseField>)],
+        rng: &mut ChaCha8Rng,
+        pols: &[SquarePolynomial<BaseField>],
         sum: BaseField,
     ) -> Result<()> {
-        let mut r_iter = pols.iter().map(|(r, _)| r);
-        let cols = [(); J].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
-        let rows = [(); I].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
-        let row1 = rows.map(|(row, _)| row);
-        let row2 = rows.map(|(_, row)| row);
-        let col1 = cols.map(|(col, _)| col);
-        let col2 = cols.map(|(_, col)| col);
-        self.verify_sumcheck_constraints(pols, sum, &row1, &row2, &col1, &col2)
+        let mut row1 = [BaseField::from(0); I];
+        let mut row2 = [BaseField::from(0); I];
+        let mut col1 = [BaseField::from(0); J];
+        let mut col2 = [BaseField::from(0); J];
+        let mut rs = Vec::with_capacity(2 * I + 2 * J);
+        (0..J).for_each(|j| {
+            let r1 = random_base(rng);
+            let r2 = random_base(rng);
+            col1[j] = r1;
+            col2[j] = r2;
+            rs.push(r1);
+            rs.push(r2);
+        });
+        (0..I).for_each(|i| {
+            let r1 = random_base(rng);
+            let r2 = random_base(rng);
+            row1[i] = r1;
+            row2[i] = r2;
+            rs.push(r1);
+            rs.push(r2);
+        });
+        self.verify_sumcheck_constraints(pols, &rs, sum, &row1, &row2, &col1, &col2)
     }
 
     pub fn verify_sumcheck_transposed(
         &self,
-        pols: &[(BaseField, SquarePolynomial<BaseField>)],
+        rng: &mut ChaCha8Rng,
+        pols: &[SquarePolynomial<BaseField>],
         sum: BaseField,
     ) -> Result<()> {
-        let mut r_iter = pols.iter().map(|(r, _)| r);
-        let rows = [(); I].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
-        let cols = [(); J].map(|_| (*r_iter.next().unwrap(), *r_iter.next().unwrap()));
-        let row1 = rows.map(|(row, _)| row);
-        let row2 = rows.map(|(_, row)| row);
-        let col1 = cols.map(|(col, _)| col);
-        let col2 = cols.map(|(_, col)| col);
-        self.verify_sumcheck_constraints(pols, sum, &row1, &row2, &col1, &col2)
+        let mut row1 = [BaseField::from(0); I];
+        let mut row2 = [BaseField::from(0); I];
+        let mut col1 = [BaseField::from(0); J];
+        let mut col2 = [BaseField::from(0); J];
+        let mut rs = Vec::with_capacity(2 * I + 2 * J);
+        (0..I).for_each(|i| {
+            let r1 = random_base(rng);
+            let r2 = random_base(rng);
+            row1[i] = r1;
+            row2[i] = r2;
+            rs.push(r1);
+            rs.push(r2);
+        });
+        (0..J).for_each(|j| {
+            let r1 = random_base(rng);
+            let r2 = random_base(rng);
+            col1[j] = r1;
+            col2[j] = r2;
+            rs.push(r1);
+            rs.push(r2);
+        });
+        self.verify_sumcheck_constraints(pols, &rs, sum, &row1, &row2, &col1, &col2)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn verify_sumcheck_constraints(
         &self,
-        pols: &[(BaseField, SquarePolynomial<BaseField>)],
+        pols: &[SquarePolynomial<BaseField>],
+        rs: &[BaseField],
         sum: BaseField,
         row1: &[BaseField; I],
         row2: &[BaseField; I],
@@ -314,7 +348,7 @@ where
     ) -> Result<()> {
         assert_eq!(pols.len(), 2 * I + 2 * J);
         let f = BaseField::from;
-        let mut iter = pols.iter();
+        let mut iter = rs.iter().zip(pols.iter());
         let (mut r, mut pol) = iter.next().context("Expects at least one polynomial")?;
         ensure!(
             sum == pol.evaluate(f(0)) + pol.evaluate(f(1)),
@@ -322,14 +356,14 @@ where
         );
         for (i, (r_next, pol_next)) in iter.enumerate() {
             ensure!(
-                pol.evaluate(r) == pol_next.evaluate(f(0)) + pol_next.evaluate(f(1)),
+                pol.evaluate(*r) == pol_next.evaluate(f(0)) + pol_next.evaluate(f(1)),
                 "Polynomial {i} does not satisfy equation"
             );
-            r = *r_next;
-            pol = *pol_next;
+            r = r_next;
+            pol = pol_next;
         }
         ensure!(
-            self.evaluate(row1, row2, col1, col2) == pol.evaluate(r),
+            self.evaluate(row1, row2, col1, col2) == pol.evaluate(*r),
             "Does not match polynomial evaluation"
         );
         Ok(())
@@ -404,10 +438,13 @@ mod tests {
 
     #[test]
     fn sumcheck_test() {
-        let system = pythagorean_cs();
+        let mut system = pythagorean_cs();
+        let mut rng = system.rng.clone();
         let pols = system.generate_partial_polynomials();
         println!("{pols:#?}");
-        system.verify_sumcheck(&pols, BaseField::from(0)).unwrap();
+        system
+            .verify_sumcheck(&mut rng, &pols, BaseField::from(0))
+            .unwrap();
     }
 
     #[test]
@@ -422,7 +459,8 @@ mod tests {
             rows: rows.try_into().unwrap(),
         };
         let set = pythagorean_set();
-        let system = BQCS::new(trace, set);
+        let mut system = BQCS::new(trace, set);
+        let mut rng = system.rng.clone();
         println!(
             "GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
             1 << TOTAL_LOG_HEIGHT,
@@ -433,7 +471,9 @@ mod tests {
         println!("Generation took {:?}", now.elapsed());
         println!("VERIFYING");
         let now = Instant::now();
-        system.verify_sumcheck(&pols, BaseField::from(0)).unwrap();
+        system
+            .verify_sumcheck(&mut rng, &pols, BaseField::from(0))
+            .unwrap();
         println!("Verification took {:?}", now.elapsed());
     }
 
@@ -449,7 +489,8 @@ mod tests {
             rows: rows.try_into().unwrap(),
         };
         let set = pythagorean_set();
-        let system = BQCS::new(trace, set);
+        let mut system = BQCS::new(trace, set);
+        let mut rng = system.rng.clone();
         println!(
             "GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
             1 << TOTAL_LOG_HEIGHT,
@@ -461,7 +502,7 @@ mod tests {
         println!("VERIFYING");
         let now = Instant::now();
         system
-            .verify_sumcheck_transposed(&pols, BaseField::from(0))
+            .verify_sumcheck_transposed(&mut rng, &pols, BaseField::from(0))
             .unwrap();
         println!("Verification took {:?}", now.elapsed());
     }

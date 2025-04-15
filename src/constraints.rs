@@ -1,3 +1,6 @@
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
+
 use crate::fields::{random_base, BaseField};
 
 #[derive(Clone, Copy, Debug)]
@@ -139,6 +142,7 @@ where
     pub delta: Delta<I>,
     pub trace: Trace<I, J>,
     pub matrix: ConstraintSetMatrix<J, K>,
+    pub rng: ChaCha8Rng,
 }
 
 impl<const I: usize, const J: usize, const K: usize> BQCS<I, J, K>
@@ -148,13 +152,14 @@ where
     [(); 1 << K]:,
 {
     pub fn new(trace: Trace<I, J>, set: ConstraintSet<J, K>) -> Self {
-        let (random_i, random_k) = generate_challenges(&trace);
+        let (rng, random_i, random_k) = generate_cs_challenges();
         let delta = Delta { data: random_i };
         let matrix = ConstraintSetMatrix { set, random_k };
         Self {
             delta,
             trace,
             matrix,
+            rng,
         }
     }
 
@@ -177,17 +182,15 @@ where
     }
 }
 
-fn generate_challenges<const I: usize, const J: usize, const K: usize>(
-    _trace: &Trace<I, J>,
-) -> ([BaseField; I], [BaseField; K])
+fn generate_cs_challenges<const I: usize, const K: usize>(
+) -> (ChaCha8Rng, [BaseField; I], [BaseField; K])
 where
     [(); 1 << I]:,
-    [(); 1 << J]:,
 {
-    let rng = &mut rand::rng();
-    let random_i = [(); I].map(|_| random_base(rng));
-    let random_k = [(); K].map(|_| random_base(rng));
-    (random_i, random_k)
+    let mut rng = ChaCha8Rng::seed_from_u64(0);
+    let random_i = [(); I].map(|_| random_base(&mut rng));
+    let random_k = [(); K].map(|_| random_base(&mut rng));
+    (rng, random_i, random_k)
 }
 
 #[cfg(test)]

@@ -12,9 +12,10 @@
 
 use ark_ff::{fields::Fp64, BigInt, Fp, Fp2, Fp2Config, PrimeField, SqrtPrecomputation, Zero};
 use core::marker::PhantomData;
-use rand::{rngs::ThreadRng, Rng};
+use rand::Rng;
+use rand_chacha::ChaCha8Rng;
 
-pub fn random_base(rng: &mut ThreadRng) -> BaseField {
+pub fn random_base(rng: &mut ChaCha8Rng) -> BaseField {
     BaseField::from(rng.random::<u64>())
 }
 
