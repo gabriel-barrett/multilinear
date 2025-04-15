@@ -5,8 +5,40 @@ use rand_chacha::ChaCha8Rng;
 use crate::{
     constraints::BQCS,
     fields::{random_base, BaseField},
-    polynomials::{SquarePolynomial, SquarePolynomialEval},
+    polynomials::SquarePolynomialEval,
 };
+
+pub struct SumcheckPolynomial {
+    pub a1: BaseField,
+    pub a2: BaseField,
+}
+
+impl std::fmt::Debug for SumcheckPolynomial {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "#### + {:?}*X + {:?}*X^2", self.a1, self.a2)?;
+        Ok(())
+    }
+}
+
+impl SquarePolynomialEval<BaseField> {
+    pub fn to_sumcheck_polynomial(&self) -> SumcheckPolynomial {
+        SumcheckPolynomial {
+            a1: self.one,
+            a2: self.minus_one,
+        }
+    }
+}
+
+impl SumcheckPolynomial {
+    pub fn to_polynomial(&self, a0: BaseField) -> SquarePolynomialEval<BaseField> {
+        SquarePolynomialEval {
+            zero: a0 - self.a1,
+            one: self.a1,
+            minus_one: self.a2,
+        }
+    }
+}
+
 
 impl<const I: usize, const J: usize, const K: usize> BQCS<I, J, K>
 where
@@ -17,7 +49,7 @@ where
     pub fn generate_partial_polynomials(
         &mut self,
         sum: BaseField,
-    ) -> Vec<SquarePolynomial<BaseField>> {
+    ) -> Vec<SumcheckPolynomial> {
         let mut delta = self.delta.build_table();
         let mut matrix = self.matrix.build_table();
         let mut trace1 = self.trace.build_table();
@@ -57,8 +89,8 @@ where
                 minus_one,
             };
             let r2 = self.random();
-            pols.push(pol1.to_polynomial());
-            pols.push(pol2.to_polynomial());
+            pols.push(pol1.to_sumcheck_polynomial());
+            pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
             fold_matrices_col(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
         }
@@ -95,8 +127,8 @@ where
                 minus_one,
             };
             let r2 = self.random();
-            pols.push(pol1.to_polynomial());
-            pols.push(pol2.to_polynomial());
+            pols.push(pol1.to_sumcheck_polynomial());
+            pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
             fold_matrices_row(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
         }
@@ -106,7 +138,7 @@ where
     pub fn generate_partial_polynomials_transposed(
         &mut self,
         sum: BaseField,
-    ) -> Vec<SquarePolynomial<BaseField>> {
+    ) -> Vec<SumcheckPolynomial> {
         let mut delta = self.delta.build_table();
         let mut matrix = self.matrix.build_table();
         let mut trace1 = self.trace.build_table();
@@ -146,8 +178,8 @@ where
                 minus_one,
             };
             let r2 = self.random();
-            pols.push(pol1.to_polynomial());
-            pols.push(pol2.to_polynomial());
+            pols.push(pol1.to_sumcheck_polynomial());
+            pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
             fold_matrices_row(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
         }
@@ -184,8 +216,8 @@ where
                 minus_one,
             };
             let r2 = self.random();
-            pols.push(pol1.to_polynomial());
-            pols.push(pol2.to_polynomial());
+            pols.push(pol1.to_sumcheck_polynomial());
+            pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
             fold_matrices_col(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
         }
@@ -195,7 +227,7 @@ where
     pub fn verify_sumcheck(
         &self,
         rng: &mut ChaCha8Rng,
-        pols: &[SquarePolynomial<BaseField>],
+        pols: &[SumcheckPolynomial],
         sum: BaseField,
     ) -> Result<()> {
         let mut row1 = [BaseField::from(0); I];
@@ -225,7 +257,7 @@ where
     pub fn verify_sumcheck_transposed(
         &self,
         rng: &mut ChaCha8Rng,
-        pols: &[SquarePolynomial<BaseField>],
+        pols: &[SumcheckPolynomial],
         sum: BaseField,
     ) -> Result<()> {
         let mut row1 = [BaseField::from(0); I];
@@ -255,7 +287,7 @@ where
     #[allow(clippy::too_many_arguments)]
     fn verify_sumcheck_constraints(
         &self,
-        pols: &[SquarePolynomial<BaseField>],
+        pols: &[SumcheckPolynomial],
         rs: &[BaseField],
         sum: BaseField,
         row1: &[BaseField; I],
@@ -264,18 +296,11 @@ where
         col2: &[BaseField; J],
     ) -> Result<()> {
         assert_eq!(pols.len(), 2 * I + 2 * J);
-        let f = BaseField::from;
         let mut iter = rs.iter().zip(pols.iter());
-        let (mut r, mut pol) = iter.next().context("Expects at least one polynomial")?;
-        ensure!(
-            sum == pol.evaluate(f(0)) + pol.evaluate(f(1)),
-            "Does not sumcheck"
-        );
-        for (i, (r_next, pol_next)) in iter.enumerate() {
-            ensure!(
-                pol.evaluate(*r) == pol_next.evaluate(f(0)) + pol_next.evaluate(f(1)),
-                "Polynomial {i} does not satisfy equation"
-            );
+        let (mut r, sumcheck_pol) = iter.next().context("Expects at least one polynomial")?;
+        let mut pol = sumcheck_pol.to_polynomial(sum);
+        for (r_next, sumcheck_pol) in iter {
+            let pol_next = sumcheck_pol.to_polynomial(pol.evaluate(*r));
             r = r_next;
             pol = pol_next;
         }
