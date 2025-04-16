@@ -86,6 +86,43 @@ where
     ) -> Vec<SumcheckPolynomial> {
         let mut pols = Vec::with_capacity(2 * I + 2 * J);
         let mut previous_sum = sum;
+        for _ in 0..I {
+            let a00 = partial_sum_rows(0, matrices);
+            let a01 = BaseField::from(0);
+            let a10 = BaseField::from(0);
+            let a11 = previous_sum - a00;
+            let b0 = compute_minus_one_rows(0, matrices);
+            let b1 = compute_minus_one_rows(1, matrices);
+            let pol1 = SquarePolynomialEval {
+                zero: a00,
+                one: a11,
+                minus_one: b0 + b1,
+            };
+            let r1 = self.random();
+            let minus_one = compute_r_minus_one_rows(r1, matrices);
+            let zero = SquarePolynomialEval {
+                zero: a00,
+                one: a10,
+                minus_one: b0,
+            }
+            .evaluate(r1);
+            let one = SquarePolynomialEval {
+                zero: a01,
+                one: a11,
+                minus_one: b1,
+            }
+            .evaluate(r1);
+            let pol2 = SquarePolynomialEval {
+                zero,
+                one,
+                minus_one,
+            };
+            let r2 = self.random();
+            pols.push(pol1.to_sumcheck_polynomial());
+            pols.push(pol2.to_sumcheck_polynomial());
+            previous_sum = pol2.evaluate(r2);
+            fold_matrices_row(r1, r2, matrices);
+        }
         for _ in 0..J {
             let a00 = partial_sum_cols(0, 0, matrices);
             let a01 = partial_sum_cols(0, 1, matrices);
@@ -122,43 +159,6 @@ where
             pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
             fold_matrices_col(r1, r2, matrices);
-        }
-        for _ in 0..I {
-            let a00 = partial_sum_rows(0, matrices);
-            let a01 = BaseField::from(0);
-            let a10 = BaseField::from(0);
-            let a11 = previous_sum - a00 - a01 - a10;
-            let b0 = compute_minus_one_rows(0, matrices);
-            let b1 = compute_minus_one_rows(1, matrices);
-            let pol1 = SquarePolynomialEval {
-                zero: a00 + a01,
-                one: a10 + a11,
-                minus_one: b0 + b1,
-            };
-            let r1 = self.random();
-            let minus_one = compute_r_minus_one_rows(r1, matrices);
-            let zero = SquarePolynomialEval {
-                zero: a00,
-                one: a10,
-                minus_one: b0,
-            }
-            .evaluate(r1);
-            let one = SquarePolynomialEval {
-                zero: a01,
-                one: a11,
-                minus_one: b1,
-            }
-            .evaluate(r1);
-            let pol2 = SquarePolynomialEval {
-                zero,
-                one,
-                minus_one,
-            };
-            let r2 = self.random();
-            pols.push(pol1.to_sumcheck_polynomial());
-            pols.push(pol2.to_sumcheck_polynomial());
-            previous_sum = pol2.evaluate(r2);
-            fold_matrices_row(r1, r2, matrices);
         }
         pols
     }
@@ -170,43 +170,6 @@ where
     ) -> Vec<SumcheckPolynomial> {
         let mut pols = Vec::with_capacity(2 * I + 2 * J);
         let mut previous_sum = sum;
-        for _ in 0..I {
-            let a00 = partial_sum_rows(0, matrices);
-            let a01 = BaseField::from(0);
-            let a10 = BaseField::from(0);
-            let a11 = previous_sum - a00 - a01 - a10;
-            let b0 = compute_minus_one_rows(0, matrices);
-            let b1 = compute_minus_one_rows(1, matrices);
-            let pol1 = SquarePolynomialEval {
-                zero: a00 + a01,
-                one: a10 + a11,
-                minus_one: b0 + b1,
-            };
-            let r1 = self.random();
-            let minus_one = compute_r_minus_one_rows(r1, matrices);
-            let zero = SquarePolynomialEval {
-                zero: a00,
-                one: a10,
-                minus_one: b0,
-            }
-            .evaluate(r1);
-            let one = SquarePolynomialEval {
-                zero: a01,
-                one: a11,
-                minus_one: b1,
-            }
-            .evaluate(r1);
-            let pol2 = SquarePolynomialEval {
-                zero,
-                one,
-                minus_one,
-            };
-            let r2 = self.random();
-            pols.push(pol1.to_sumcheck_polynomial());
-            pols.push(pol2.to_sumcheck_polynomial());
-            previous_sum = pol2.evaluate(r2);
-            fold_matrices_row(r1, r2, matrices);
-        }
         for _ in 0..J {
             let a00 = partial_sum_cols(0, 0, matrices);
             let a01 = partial_sum_cols(0, 1, matrices);
@@ -243,6 +206,43 @@ where
             pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
             fold_matrices_col(r1, r2, matrices);
+        }
+        for _ in 0..I {
+            let a00 = partial_sum_rows(0, matrices);
+            let a01 = BaseField::from(0);
+            let a10 = BaseField::from(0);
+            let a11 = previous_sum - a00;
+            let b0 = compute_minus_one_rows(0, matrices);
+            let b1 = compute_minus_one_rows(1, matrices);
+            let pol1 = SquarePolynomialEval {
+                zero: a00,
+                one: a11,
+                minus_one: b0 + b1,
+            };
+            let r1 = self.random();
+            let minus_one = compute_r_minus_one_rows(r1, matrices);
+            let zero = SquarePolynomialEval {
+                zero: a00,
+                one: a10,
+                minus_one: b0,
+            }
+            .evaluate(r1);
+            let one = SquarePolynomialEval {
+                zero: a01,
+                one: a11,
+                minus_one: b1,
+            }
+            .evaluate(r1);
+            let pol2 = SquarePolynomialEval {
+                zero,
+                one,
+                minus_one,
+            };
+            let r2 = self.random();
+            pols.push(pol1.to_sumcheck_polynomial());
+            pols.push(pol2.to_sumcheck_polynomial());
+            previous_sum = pol2.evaluate(r2);
+            fold_matrices_row(r1, r2, matrices);
         }
         pols
     }
@@ -258,19 +258,19 @@ where
         let mut col1 = [BaseField::from(0); J];
         let mut col2 = [BaseField::from(0); J];
         let mut rs = Vec::with_capacity(2 * I + 2 * J);
-        (0..J).for_each(|j| {
-            let r1 = random_base(rng);
-            let r2 = random_base(rng);
-            col1[j] = r1;
-            col2[j] = r2;
-            rs.push(r1);
-            rs.push(r2);
-        });
         (0..I).for_each(|i| {
             let r1 = random_base(rng);
             let r2 = random_base(rng);
             row1[i] = r1;
             row2[i] = r2;
+            rs.push(r1);
+            rs.push(r2);
+        });
+        (0..J).for_each(|j| {
+            let r1 = random_base(rng);
+            let r2 = random_base(rng);
+            col1[j] = r1;
+            col2[j] = r2;
             rs.push(r1);
             rs.push(r2);
         });
@@ -288,19 +288,19 @@ where
         let mut col1 = [BaseField::from(0); J];
         let mut col2 = [BaseField::from(0); J];
         let mut rs = Vec::with_capacity(2 * I + 2 * J);
-        (0..I).for_each(|i| {
-            let r1 = random_base(rng);
-            let r2 = random_base(rng);
-            row1[i] = r1;
-            row2[i] = r2;
-            rs.push(r1);
-            rs.push(r2);
-        });
         (0..J).for_each(|j| {
             let r1 = random_base(rng);
             let r2 = random_base(rng);
             col1[j] = r1;
             col2[j] = r2;
+            rs.push(r1);
+            rs.push(r2);
+        });
+        (0..I).for_each(|i| {
+            let r1 = random_base(rng);
+            let r2 = random_base(rng);
+            row1[i] = r1;
+            row2[i] = r2;
             rs.push(r1);
             rs.push(r2);
         });
