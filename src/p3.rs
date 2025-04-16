@@ -99,7 +99,7 @@ where
 
 #[test]
 fn test_public_value_impl() {
-    const TOTAL_LOG_HEIGHT: u8 = 18;
+    const TOTAL_LOG_HEIGHT: u8 = 20;
     let mut rng = SmallRng::seed_from_u64(1);
     let perm = Perm::new_from_rng_128(&mut rng);
     let hash = MyHash::new(perm.clone());

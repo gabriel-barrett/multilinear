@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn pcs_test() {
-        let num_variables = 20;
+        let num_variables = 22;
         let lagrange = default_polynomial(num_variables);
         let now = Instant::now();
         let polynomial = lagrange.to_coefficient_list();

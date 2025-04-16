@@ -2,6 +2,7 @@ use crate::{
     constraints::{ConstraintSetMatrix, Delta, LinearCombination, Quadratic, Trace, Var, BQCS},
     fields::BaseField,
 };
+use std::array::from_fn;
 
 // All functions assume `bits` is within the multilinear's range, and that `I`,`J` < `usize::BITS`
 impl<const J: usize> Var<J> {
@@ -49,14 +50,8 @@ where
     }
 
     // TODO: Build tables for the linear combinations instead, so that it's not `J^2`
-    pub fn build_table(&self) -> Vec<Vec<BaseField>> {
-        (0..1 << J)
-            .map(|j1| {
-                (0..1 << J)
-                    .map(|j2| self.evaluate_hypercube(j1, j2))
-                    .collect()
-            })
-            .collect()
+    pub fn build_table(&self) -> Box<[[BaseField; 1 << J]; 1 << J]> {
+        Box::new(from_fn(|j1| from_fn(|j2| self.evaluate_hypercube(j1, j2))))
     }
 }
 
@@ -69,10 +64,8 @@ where
         self.rows[row_bits][col_bits]
     }
 
-    pub fn build_table(&self) -> Vec<Vec<BaseField>> {
-        (0..1 << I)
-            .map(|i| (0..1 << J).map(|j| self.evaluate_hypercube(i, j)).collect())
-            .collect()
+    pub fn build_table(&self) -> Box<[[BaseField; 1 << J]; 1 << I]> {
+        self.rows.clone()
     }
 }
 
@@ -92,8 +85,9 @@ impl<const I: usize> Delta<I> {
         acc
     }
 
-    pub fn build_table(&self) -> Vec<BaseField> {
-        (0..1 << I).map(|i| self.evaluate_hypercube(i)).collect()
+    pub fn build_table(&self) -> Box<[BaseField; 1 << I]> {
+        let vec: Vec<_> = (0..1 << I).map(|i| self.evaluate_hypercube(i)).collect();
+        vec.try_into().unwrap()
     }
 }
 

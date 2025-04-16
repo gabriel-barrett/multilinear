@@ -1,4 +1,4 @@
-#![allow(non_snake_case)]
+#![allow(clippy::needless_range_loop)]
 use anyhow::{ensure, Context, Result};
 use rand_chacha::ChaCha8Rng;
 
@@ -39,6 +39,18 @@ impl SumcheckPolynomial {
     }
 }
 
+pub struct Matrices<const I: usize, const J: usize>
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    pub row_size: usize,
+    pub col_size: usize,
+    pub delta: Box<[BaseField; 1 << I]>,
+    pub matrix: Box<[[BaseField; 1 << J]; 1 << J]>,
+    pub trace1: Box<[[BaseField; 1 << J]; 1 << I]>,
+    pub trace2: Box<[[BaseField; 1 << J]; 1 << I]>,
+}
 
 impl<const I: usize, const J: usize, const K: usize> BQCS<I, J, K>
 where
@@ -46,31 +58,48 @@ where
     [(); 1 << J]:,
     [(); 1 << K]:,
 {
+    // Delta and matrix can be precomputed, so we just need to clone it for sumcheck
+    #[allow(clippy::borrowed_box)]
+    pub fn build_tables(
+        &self,
+        delta: &Box<[BaseField; 1 << I]>,
+        matrix: &Box<[[BaseField; 1 << J]; 1 << J]>,
+    ) -> Matrices<I, J> {
+        let delta = delta.clone();
+        let matrix = matrix.clone();
+        let trace1 = self.trace.build_table();
+        let trace2 = self.trace.build_table();
+        Matrices {
+            row_size: 1 << I,
+            col_size: 1 << J,
+            delta,
+            matrix,
+            trace1,
+            trace2,
+        }
+    }
+
     pub fn generate_partial_polynomials(
         &mut self,
+        matrices: &mut Matrices<I, J>,
         sum: BaseField,
     ) -> Vec<SumcheckPolynomial> {
-        let mut delta = self.delta.build_table();
-        let mut matrix = self.matrix.build_table();
-        let mut trace1 = self.trace.build_table();
-        let mut trace2 = self.trace.build_table();
         let mut pols = Vec::with_capacity(2 * I + 2 * J);
         let mut previous_sum = sum;
         for _ in 0..J {
-            let a00 = partial_sum_cols(0, 0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let a01 = partial_sum_cols(0, 1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let a10 = partial_sum_cols(1, 0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let a00 = partial_sum_cols(0, 0, matrices);
+            let a01 = partial_sum_cols(0, 1, matrices);
+            let a10 = partial_sum_cols(1, 0, matrices);
             let a11 = previous_sum - a00 - a01 - a10;
-            let b0 = compute_minus_one_cols(0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let b1 = compute_minus_one_cols(1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let b0 = compute_minus_one_cols(0, matrices);
+            let b1 = compute_minus_one_cols(1, matrices);
             let pol1 = SquarePolynomialEval {
                 zero: a00 + a01,
                 one: a10 + a11,
                 minus_one: b0 + b1,
             };
             let r1 = self.random();
-            let minus_one =
-                compute_r_minus_one_cols(r1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let minus_one = compute_r_minus_one_cols(r1, matrices);
             let zero = SquarePolynomialEval {
                 zero: a00,
                 one: a10,
@@ -92,23 +121,22 @@ where
             pols.push(pol1.to_sumcheck_polynomial());
             pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
-            fold_matrices_col(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            fold_matrices_col(r1, r2, matrices);
         }
         for _ in 0..I {
-            let a00 = partial_sum_rows(0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let a00 = partial_sum_rows(0, matrices);
             let a01 = BaseField::from(0);
             let a10 = BaseField::from(0);
             let a11 = previous_sum - a00 - a01 - a10;
-            let b0 = compute_minus_one_rows(0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let b1 = compute_minus_one_rows(1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let b0 = compute_minus_one_rows(0, matrices);
+            let b1 = compute_minus_one_rows(1, matrices);
             let pol1 = SquarePolynomialEval {
                 zero: a00 + a01,
                 one: a10 + a11,
                 minus_one: b0 + b1,
             };
             let r1 = self.random();
-            let minus_one =
-                compute_r_minus_one_rows(r1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let minus_one = compute_r_minus_one_rows(r1, matrices);
             let zero = SquarePolynomialEval {
                 zero: a00,
                 one: a10,
@@ -130,36 +158,32 @@ where
             pols.push(pol1.to_sumcheck_polynomial());
             pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
-            fold_matrices_row(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            fold_matrices_row(r1, r2, matrices);
         }
         pols
     }
 
     pub fn generate_partial_polynomials_transposed(
         &mut self,
+        matrices: &mut Matrices<I, J>,
         sum: BaseField,
     ) -> Vec<SumcheckPolynomial> {
-        let mut delta = self.delta.build_table();
-        let mut matrix = self.matrix.build_table();
-        let mut trace1 = self.trace.build_table();
-        let mut trace2 = self.trace.build_table();
         let mut pols = Vec::with_capacity(2 * I + 2 * J);
         let mut previous_sum = sum;
         for _ in 0..I {
-            let a00 = partial_sum_rows(0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let a00 = partial_sum_rows(0, matrices);
             let a01 = BaseField::from(0);
             let a10 = BaseField::from(0);
             let a11 = previous_sum - a00 - a01 - a10;
-            let b0 = compute_minus_one_rows(0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let b1 = compute_minus_one_rows(1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let b0 = compute_minus_one_rows(0, matrices);
+            let b1 = compute_minus_one_rows(1, matrices);
             let pol1 = SquarePolynomialEval {
                 zero: a00 + a01,
                 one: a10 + a11,
                 minus_one: b0 + b1,
             };
             let r1 = self.random();
-            let minus_one =
-                compute_r_minus_one_rows(r1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let minus_one = compute_r_minus_one_rows(r1, matrices);
             let zero = SquarePolynomialEval {
                 zero: a00,
                 one: a10,
@@ -181,23 +205,22 @@ where
             pols.push(pol1.to_sumcheck_polynomial());
             pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
-            fold_matrices_row(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            fold_matrices_row(r1, r2, matrices);
         }
         for _ in 0..J {
-            let a00 = partial_sum_cols(0, 0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let a01 = partial_sum_cols(0, 1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let a10 = partial_sum_cols(1, 0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let a00 = partial_sum_cols(0, 0, matrices);
+            let a01 = partial_sum_cols(0, 1, matrices);
+            let a10 = partial_sum_cols(1, 0, matrices);
             let a11 = previous_sum - a00 - a01 - a10;
-            let b0 = compute_minus_one_cols(0, &mut delta, &mut matrix, &mut trace1, &mut trace2);
-            let b1 = compute_minus_one_cols(1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let b0 = compute_minus_one_cols(0, matrices);
+            let b1 = compute_minus_one_cols(1, matrices);
             let pol1 = SquarePolynomialEval {
                 zero: a00 + a01,
                 one: a10 + a11,
                 minus_one: b0 + b1,
             };
             let r1 = self.random();
-            let minus_one =
-                compute_r_minus_one_cols(r1, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            let minus_one = compute_r_minus_one_cols(r1, matrices);
             let zero = SquarePolynomialEval {
                 zero: a00,
                 one: a10,
@@ -219,7 +242,7 @@ where
             pols.push(pol1.to_sumcheck_polynomial());
             pols.push(pol2.to_sumcheck_polynomial());
             previous_sum = pol2.evaluate(r2);
-            fold_matrices_col(r1, r2, &mut delta, &mut matrix, &mut trace1, &mut trace2);
+            fold_matrices_col(r1, r2, matrices);
         }
         pols
     }
@@ -312,31 +335,35 @@ where
     }
 }
 
-fn compute_minus_one_rows(
+fn compute_minus_one_rows<const I: usize, const J: usize>(
     i_bit: usize,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) -> BaseField {
-    let I = delta.len() >> 1;
-    let J = matrix.len();
-    let i_offset = 1 << I.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) -> BaseField
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size >> 1;
+    let col_size = matrices.col_size;
+    let i_offset = 1 << row_size.trailing_zeros();
     let maybe_offset = i_offset * i_bit;
 
     let mut acc = BaseField::from(0);
     let two = BaseField::from(2);
     let minus_one = BaseField::from(-1);
-    let delta_coeff = if maybe_offset == 0 {
-        two
-    } else {
-        minus_one
-    };
-    for i in 0..I {
+    let delta_coeff = if maybe_offset == 0 { two } else { minus_one };
+    for i in 0..row_size {
         let d = delta[i + maybe_offset];
-        for j1 in 0..J {
+        for j1 in 0..col_size {
             let w1 = two * trace1[i][j1] - trace1[i + i_offset][j1];
-            for j2 in 0..J {
+            for j2 in 0..col_size {
                 let w2 = trace2[i + maybe_offset][j2];
                 let a = matrix[j1][j2];
                 acc += d * a * w1 * w2;
@@ -346,27 +373,35 @@ fn compute_minus_one_rows(
     delta_coeff * acc
 }
 
-fn compute_r_minus_one_rows(
+fn compute_r_minus_one_rows<const I: usize, const J: usize>(
     r1: BaseField,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) -> BaseField {
-    let I = delta.len() >> 1;
-    let J = matrix.len();
-    let i_offset = 1 << I.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) -> BaseField
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size >> 1;
+    let col_size = matrices.col_size;
+    let i_offset = 1 << row_size.trailing_zeros();
 
     let two = BaseField::from(2);
     let s1 = BaseField::from(1) - r1;
     let coeff1 = two * s1;
     let coeff2 = r1;
     let mut acc = BaseField::from(0);
-    for i in 0..I {
+    for i in 0..row_size {
         let d = coeff1 * delta[i] - coeff2 * delta[i + i_offset];
-        for j1 in 0..J {
+        for j1 in 0..col_size {
             let w1 = s1 * trace1[i][j1] + r1 * trace1[i + i_offset][j1];
-            for j2 in 0..0 + J {
+            for j2 in 0..col_size {
                 let w2 = two * trace2[i][j2] - trace2[i + i_offset][j2];
                 let a = matrix[j1][j2];
                 acc += d * a * w1 * w2;
@@ -376,27 +411,35 @@ fn compute_r_minus_one_rows(
     acc
 }
 
-fn compute_minus_one_cols(
+fn compute_minus_one_cols<const I: usize, const J: usize>(
     j2_bit: usize,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) -> BaseField {
-    let I = delta.len();
-    let J = matrix.len() >> 1;
-    let j1_offset = 1 << J.trailing_zeros();
-    let j2_offset = j2_bit << J.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) -> BaseField
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size;
+    let col_size = matrices.col_size >> 1;
+    let j1_offset = 1 << col_size.trailing_zeros();
+    let j2_offset = j2_bit << col_size.trailing_zeros();
 
     let two = BaseField::from(2);
     let mut acc = BaseField::from(0);
-    for i in 0..I {
+    for i in 0..row_size {
         let d = delta[i];
-        for j1 in 0..J {
+        for j1 in 0..col_size {
             let w1_0 = trace1[i][j1];
             let w1_1 = trace1[i][j1 + j1_offset];
             let w1 = two * w1_0 - w1_1;
-            for j2 in j2_offset..j2_offset + J {
+            for j2 in j2_offset..j2_offset + col_size {
                 let w2 = trace2[i][j2];
                 let a_0 = matrix[j1][j2];
                 let a_1 = matrix[j1 + j1_offset][j2];
@@ -408,16 +451,24 @@ fn compute_minus_one_cols(
     acc
 }
 
-fn compute_r_minus_one_cols(
+fn compute_r_minus_one_cols<const I: usize, const J: usize>(
     r1: BaseField,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) -> BaseField {
-    let I = delta.len();
-    let J = matrix.len() >> 1;
-    let offset = 1 << J.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) -> BaseField
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size;
+    let col_size = matrices.col_size >> 1;
+    let offset = 1 << col_size.trailing_zeros();
 
     let two = BaseField::from(2);
     let s1 = BaseField::from(1) - r1;
@@ -426,13 +477,13 @@ fn compute_r_minus_one_cols(
     let coeff2 = s1;
     let coeff3 = r1 * two;
     let coeff4 = r1;
-    for i in 0..I {
+    for i in 0..row_size {
         let d = delta[i];
-        for j1 in 0..J {
+        for j1 in 0..col_size {
             let w1_0 = s1 * trace1[i][j1];
             let w1_1 = r1 * trace1[i][j1 + offset];
             let w1 = w1_0 + w1_1;
-            for j2 in 0..J {
+            for j2 in 0..col_size {
                 let w2_0 = two * trace2[i][j2];
                 let w2_1 = trace2[i][j2 + offset];
                 let w2 = w2_0 - w2_1;
@@ -448,25 +499,33 @@ fn compute_r_minus_one_cols(
     acc
 }
 
-fn partial_sum_cols(
+fn partial_sum_cols<const I: usize, const J: usize>(
     j1_bit: usize,
     j2_bit: usize,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) -> BaseField {
-    let I = delta.len();
-    let J = matrix.len() >> 1;
-    let j1_offset = j1_bit << J.trailing_zeros();
-    let j2_offset = j2_bit << J.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) -> BaseField
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size;
+    let col_size = matrices.col_size >> 1;
+    let j1_offset = j1_bit << col_size.trailing_zeros();
+    let j2_offset = j2_bit << col_size.trailing_zeros();
 
     let mut acc = BaseField::from(0);
-    for i in 0..I {
+    for i in 0..row_size {
         let d = delta[i];
-        for j1 in j1_offset..j1_offset + J {
+        for j1 in j1_offset..j1_offset + col_size {
             let w1 = trace1[i][j1];
-            for j2 in j2_offset..j2_offset + J {
+            for j2 in j2_offset..j2_offset + col_size {
                 let w2 = trace2[i][j2];
                 let a = matrix[j1][j2];
                 acc += d * a * w1 * w2;
@@ -476,23 +535,31 @@ fn partial_sum_cols(
     acc
 }
 
-fn partial_sum_rows(
+fn partial_sum_rows<const I: usize, const J: usize>(
     i_bit: usize,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) -> BaseField {
-    let I = delta.len() >> 1;
-    let J = matrix.len();
-    let i_offset = i_bit << I.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) -> BaseField
+where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size >> 1;
+    let col_size = matrices.col_size;
+    let i_offset = i_bit << row_size.trailing_zeros();
 
     let mut acc = BaseField::from(0);
-    for i in i_offset..i_offset + I {
+    for i in i_offset..i_offset + row_size {
         let d = delta[i];
-        for j1 in 0..J {
+        for j1 in 0..col_size {
             let w1 = trace1[i][j1];
-            for j2 in 0..J {
+            for j2 in 0..col_size {
                 let w2 = trace2[i][j2];
                 let a = matrix[j1][j2];
                 acc += d * a * w1 * w2;
@@ -502,72 +569,79 @@ fn partial_sum_rows(
     acc
 }
 
-fn fold_matrices_row(
+fn fold_matrices_row<const I: usize, const J: usize>(
     r1: BaseField,
     r2: BaseField,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) {
-    let I = delta.len() >> 1;
-    let J = matrix.len();
-    let i_offset = 1 << I.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        delta,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size >> 1;
+    let col_size = matrices.col_size;
+    let i_offset = 1 << row_size.trailing_zeros();
     let s1 = BaseField::from(1) - r1;
     let s2 = BaseField::from(1) - r2;
     let coeff1 = s1 * s2;
     let coeff4 = r1 * r2;
-    for i in 0..I {
+    for i in 0..row_size {
         delta[i] = coeff1 * delta[i] + coeff4 * delta[i + i_offset];
-        for j1 in 0..J {
+        for j1 in 0..col_size {
             trace1[i][j1] = s1 * trace1[i][j1] + r1 * trace1[i + i_offset][j1];
         }
-        for j2 in 0..J {
+        for j2 in 0..col_size {
             trace2[i][j2] = s2 * trace2[i][j2] + r2 * trace2[i + i_offset][j2];
         }
     }
-    delta.truncate(I);
-    trace1.truncate(I);
-    trace2.truncate(I);
+    matrices.row_size = row_size;
 }
 
-fn fold_matrices_col(
+fn fold_matrices_col<const I: usize, const J: usize>(
     r1: BaseField,
     r2: BaseField,
-    delta: &mut Vec<BaseField>,
-    matrix: &mut Vec<Vec<BaseField>>,
-    trace1: &mut Vec<Vec<BaseField>>,
-    trace2: &mut Vec<Vec<BaseField>>,
-) {
-    let I = delta.len();
-    let J = matrix.len() >> 1;
-    let j_offset = 1 << J.trailing_zeros();
+    matrices: &mut Matrices<I, J>,
+) where
+    [(); 1 << I]:,
+    [(); 1 << J]:,
+{
+    let Matrices {
+        matrix,
+        trace1,
+        trace2,
+        ..
+    } = matrices;
+    let row_size = matrices.row_size;
+    let col_size = matrices.col_size >> 1;
+    let j_offset = 1 << col_size.trailing_zeros();
     let s1 = BaseField::from(1) - r1;
     let s2 = BaseField::from(1) - r2;
     let coeff1 = s1 * s2;
     let coeff2 = r1 * s2;
     let coeff3 = s1 * r2;
     let coeff4 = r1 * r2;
-    for i in 0..I {
-        for j1 in 0..J {
+    for i in 0..row_size {
+        for j1 in 0..col_size {
             trace1[i][j1] = s1 * trace1[i][j1] + r1 * trace1[i][j1 + j_offset];
         }
-        trace1[i].truncate(J);
-        for j2 in 0..J {
+        for j2 in 0..col_size {
             trace2[i][j2] = s2 * trace2[i][j2] + r2 * trace2[i][j2 + j_offset];
         }
-        trace2[i].truncate(J);
     }
-    for j1 in 0..J {
-        for j2 in 0..J {
+    for j1 in 0..col_size {
+        for j2 in 0..col_size {
             matrix[j1][j2] = coeff1 * matrix[j1][j2]
                 + coeff2 * matrix[j1 + j_offset][j2]
                 + coeff3 * matrix[j1][j2 + j_offset]
                 + coeff4 * matrix[j1 + j_offset][j2 + j_offset];
         }
-        matrix[j1].truncate(J);
     }
-    matrix.truncate(J);
+    matrices.col_size = col_size;
 }
 
 #[cfg(test)]
@@ -628,7 +702,10 @@ mod tests {
         let mut system = pythagorean_cs();
         let mut rng = system.rng.clone();
         let sum = BaseField::from(0);
-        let pols = system.generate_partial_polynomials(sum);
+        let delta = system.delta.build_table();
+        let matrix = system.matrix.build_table();
+        let matrices = &mut system.build_tables(&delta, &matrix);
+        let pols = system.generate_partial_polynomials(matrices, sum);
         println!("{pols:#?}");
         system.verify_sumcheck(&mut rng, &pols, sum).unwrap();
     }
@@ -636,7 +713,7 @@ mod tests {
     #[test]
     fn sumcheck_high_bench() {
         let mut rows = pythagorean_trace().rows.to_vec();
-        const TOTAL_LOG_HEIGHT: usize = 18;
+        const TOTAL_LOG_HEIGHT: usize = 20;
         for _ in 0..TOTAL_LOG_HEIGHT - I {
             rows.extend(rows.clone());
         }
@@ -649,23 +726,27 @@ mod tests {
         let mut rng = system.rng.clone();
         let sum = BaseField::from(0);
         println!(
-            "GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
+            "### GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
             1 << TOTAL_LOG_HEIGHT,
             1 << J,
         );
+        let delta = system.delta.build_table();
+        let matrix = system.matrix.build_table();
         let now = Instant::now();
-        let pols = system.generate_partial_polynomials(sum);
-        println!("Generation took {:?}", now.elapsed());
-        println!("VERIFYING");
+        let matrices = &mut system.build_tables(&delta, &matrix);
+        println!("  - Table generation took {:?}", now.elapsed());
+        let now = Instant::now();
+        let pols = system.generate_partial_polynomials(matrices, sum);
+        println!("  - Generation took {:?}", now.elapsed());
         let now = Instant::now();
         system.verify_sumcheck(&mut rng, &pols, sum).unwrap();
-        println!("Verification took {:?}", now.elapsed());
+        println!("  - Verification took {:?}", now.elapsed());
     }
 
     #[test]
     fn sumcheck_high_transposed_bench() {
         let mut rows = pythagorean_trace().rows.to_vec();
-        const TOTAL_LOG_HEIGHT: usize = 18;
+        const TOTAL_LOG_HEIGHT: usize = 20;
         for _ in 0..TOTAL_LOG_HEIGHT - I {
             rows.extend(rows.clone());
         }
@@ -678,18 +759,22 @@ mod tests {
         let mut rng = system.rng.clone();
         let sum = BaseField::from(0);
         println!(
-            "GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
+            "### GENERATING POLYNOMIAL FOR HEIGHT {} AND WIDTH {}",
             1 << TOTAL_LOG_HEIGHT,
             1 << J,
         );
+        let delta = system.delta.build_table();
+        let matrix = system.matrix.build_table();
         let now = Instant::now();
-        let pols = system.generate_partial_polynomials_transposed(sum);
-        println!("Generation took {:?}", now.elapsed());
-        println!("VERIFYING");
+        let matrices = &mut system.build_tables(&delta, &matrix);
+        println!("  - Table generation took {:?}", now.elapsed());
+        let now = Instant::now();
+        let pols = system.generate_partial_polynomials_transposed(matrices, sum);
+        println!("  - Generation took {:?}", now.elapsed());
         let now = Instant::now();
         system
             .verify_sumcheck_transposed(&mut rng, &pols, sum)
             .unwrap();
-        println!("Verification took {:?}", now.elapsed());
+        println!("  - Verification took {:?}", now.elapsed());
     }
 }
