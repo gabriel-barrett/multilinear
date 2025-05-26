@@ -1,5 +1,6 @@
+use serde::{Deserialize, Serialize};
 use sha2::digest::{generic_array::GenericArray, OutputSizeUser};
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256}; // Import Serialize and Deserialize
 
 pub type HashDigest = GenericArray<u8, <Sha256 as OutputSizeUser>::OutputSize>;
 
@@ -9,13 +10,13 @@ pub struct Merkle<T> {
     pub data: Vec<T>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum Direction {
     Left,
     Right,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)] // Add Serialize and Deserialize
 pub struct MerkleInclusionPath<T> {
     pub value: T,
     pub path: Vec<(HashDigest, Direction)>,

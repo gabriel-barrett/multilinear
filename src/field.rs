@@ -4,6 +4,8 @@ use std::{
 };
 
 use ark_ff::{Field as ArkField, Fp128, MontBackend, MontConfig};
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 pub trait Field = Add<Output = Self>
     + AddAssign
@@ -37,6 +39,32 @@ impl AsRef<[u8]> for Field128 {
                 data.len() * std::mem::size_of::<u64>(),
             )
         }
+    }
+}
+
+impl Serialize for Field128 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let bytes = self.as_ref();
+        serializer.serialize_bytes(bytes)
+    }
+}
+
+impl<'de> Deserialize<'de> for Field128 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let bytes: &[u8] = Deserialize::deserialize(deserializer)?;
+        if bytes.len() != 16 {
+            return Err(D::Error::custom("Invalid byte length for Field128"));
+        }
+        let mut array = [0u8; 16];
+        array.copy_from_slice(bytes);
+        let value = u128::from_le_bytes(array);
+        Ok(Field128(Fp128::from(value)))
     }
 }
 
