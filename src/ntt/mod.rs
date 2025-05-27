@@ -15,7 +15,6 @@ pub trait NttField: Field {
     fn pow_2_generator(log_size: u64) -> Option<Self>;
 
     fn pow<S: AsRef<[u64]>>(&self, exp: S) -> Self;
-
 }
 
 impl NttField for Field128 {

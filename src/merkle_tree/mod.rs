@@ -104,9 +104,12 @@ impl std::fmt::Debug for MerkleInclusionPathError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MerkleInclusionPathError::IncompatibleHash(hash1, hash2) => {
-                write!(f, "Incompatible hash. Expected {hash1:x?}, found {hash2:x?}")
+                write!(
+                    f,
+                    "Incompatible hash. Expected {hash1:x?}, found {hash2:x?}"
+                )
             }
-	    MerkleInclusionPathError::IncompatibleIndex(index1, index2) => {
+            MerkleInclusionPathError::IncompatibleIndex(index1, index2) => {
                 write!(f, "Incompatible index. Expected {index1}, found {index2}")
             }
         }
@@ -123,16 +126,14 @@ where
             hasher.update(self.value.as_ref());
             hasher.finalize()
         };
-	let mut computed_index = 0;
+        let mut computed_index = 0;
         for (i, (sibling_hash, direction)) in self.path.iter().enumerate() {
             match direction {
                 Direction::Left => {
-		    computed_index += 1 << i;
-		    computed_hash = hash_node(sibling_hash, &computed_hash)
-		}
-                Direction::Right => {
-		    computed_hash = hash_node(&computed_hash, sibling_hash)
-		}
+                    computed_index += 1 << i;
+                    computed_hash = hash_node(sibling_hash, &computed_hash)
+                }
+                Direction::Right => computed_hash = hash_node(&computed_hash, sibling_hash),
             };
         }
 
@@ -142,12 +143,12 @@ where
                 computed_hash,
             ));
         }
-	if computed_index != index {
-	    return Err(MerkleInclusionPathError::IncompatibleIndex(
-		index,
-		computed_index
-	    ))
-	}
+        if computed_index != index {
+            return Err(MerkleInclusionPathError::IncompatibleIndex(
+                index,
+                computed_index,
+            ));
+        }
         Ok(())
     }
 }
