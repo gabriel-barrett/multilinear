@@ -3,7 +3,7 @@ use std::{
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
 
-use ark_ff::{Field as ArkField, Fp128, MontBackend, MontConfig};
+use ark_ff::{Fp128, MontBackend, MontConfig};
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -68,11 +68,6 @@ impl<'de> Deserialize<'de> for Field128 {
     }
 }
 
-impl Field128 {
-    pub fn pow<S: AsRef<[u64]>>(&self, exp: S) -> Self {
-        Field128(self.0.pow(exp))
-    }
-}
 // Implement Add
 impl Add for Field128 {
     type Output = Self;

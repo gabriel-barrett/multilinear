@@ -2,7 +2,6 @@ use crate::field::Field128;
 use crate::merkle_tree::{Merkle, MerkleInclusionPath, MerkleInclusionPathError};
 use crate::ntt::{NttField, Polynomial};
 use crate::{field::Field, merkle_tree::HashDigest};
-use bincode; // Ensure bincode is imported
 use serde::{Deserialize, Serialize};
 
 use sha2::{Digest, Sha256};
@@ -213,12 +212,13 @@ impl<F: HashableField> ProverData<F> {
 
     pub fn open_query_at(&self, index: usize) -> QueryProof<F> {
         let n = self.commitments[0].data.len();
-        assert!(index < n / 2);
-        let conjugate_index = index + n / 2;
+        assert!(index < n);
+        let conjugate_index = (index + n / 2) % n;
 
         let mut paths = Vec::new();
         let mut current_index = index;
         let mut current_conjugate = conjugate_index;
+        let mut current_n = n;
 
         for merkle in &self.commitments {
             let path = merkle.open(current_index).expect("Index out of bounds");
@@ -228,65 +228,77 @@ impl<F: HashableField> ProverData<F> {
 
             paths.push((path, conjugate_path));
 
-            current_index /= 2;
-            current_conjugate /= 2;
+            current_n /= 2;
+            current_index = current_index % current_n;
+            current_conjugate = (current_index + current_n / 2) % current_n;
         }
 
-        QueryProof { index, paths }
+        QueryProof { paths }
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryProof<F> {
-    // initial random index, from 0..N/2
-    pub index: usize,
-    // merkle paths for all fold layers at both the index and index + N/2
-    // the index at subsequent layers are halved
+    // merkle paths for all fold layers at both the index and the conjugate index
     pub paths: Vec<(MerkleInclusionPath<F>, MerkleInclusionPath<F>)>,
 }
 
 impl<F: HashableField + NttField> QueryProof<F> {
     pub fn verify(
         &self,
-        commitments: &[HashDigest],
+        domain_size: usize,
         gen: F,
+        commitments: &[HashDigest],
         last_element: F,
         random_elements: &[F],
+        transcript: &mut Transcript,
     ) -> Result<(), FriProofError> {
         if self.paths.len() != commitments.len() {
             return Err(FriProofError::WrongNumberOfPaths);
         }
-        for ((value_path, minus_value_path), commitment) in
-            self.paths.iter().zip(commitments.iter())
-        {
-            if let Err(err) = value_path.verify(commitment) {
-                return Err(FriProofError::InclusionPathError(err));
-            }
-            if let Err(err) = minus_value_path.verify(commitment) {
-                return Err(FriProofError::InclusionPathError(err));
-            }
+
+        let random_bytes = transcript.random();
+        let random_index = (u64::from_le_bytes(random_bytes[..8].try_into().unwrap())
+            % domain_size as u64) as usize;
+        transcript.append_message(b"query_index", &random_index.to_le_bytes());
+
+        let mut current_n = domain_size;
+        let mut current_index = random_index;
+        let mut current_conjugate = (random_index + domain_size / 2) % domain_size;
         let mut current_gen = gen;
         for i in 0..self.paths.len() {
             let (value_path, minus_value_path) = &self.paths[i];
+            let commitment = &commitments[i];
+            if let Err(err) = value_path.verify(commitment, current_index) {
+                return Err(FriProofError::InclusionPathError(err));
+            }
+            if let Err(err) = minus_value_path.verify(commitment, current_conjugate) {
+                return Err(FriProofError::InclusionPathError(err));
+            }
+
             let value = value_path.value; // p(g^i)
             let minus_value = minus_value_path.value; // p(-g^i)
-
+            let current_gen_pow = current_gen.pow([current_index as u64]); // g^i
             let even = (value + minus_value) / F::from(2);
-            let odd = (value - minus_value) / (F::from(2) * current_gen);
+            let odd = (value - minus_value) / (F::from(2) * current_gen_pow);
 
             if i == self.paths.len() - 1 {
-                // Último caso: verificar com o elemento final
                 if last_element != even + random_elements[i] * odd {
                     return Err(FriProofError::QueryMismatch(i));
                 }
-            } else {
-                let (next_value_path, _) = &self.paths[i + 1];
-                let next_value = next_value_path.value; // p(g^(2i))
-                if next_value != even + random_elements[i] * odd {
-                    return Err(FriProofError::QueryMismatch(i));
-                }
-                current_gen *= current_gen;
+                break;
             }
+
+            let (next_value_path, _) = &self.paths[i + 1];
+            let next_value = next_value_path.value; // p(g^(2i))
+            if next_value != even + random_elements[i] * odd {
+                return Err(FriProofError::QueryMismatch(i));
+            }
+
+            current_gen *= current_gen;
+            current_n /= 2;
+            current_index = current_index % current_n;
+            current_conjugate = (current_index + current_n / 2) % current_n;
         }
 
         Ok(())
@@ -301,14 +313,17 @@ pub struct FriProof<F: HashableField + NttField> {
     pub queries: Vec<QueryProof<F>>,
     // this is the last message, a single element
     pub last_elem: F,
+    // last random element, mostly for debugging purposes
+    pub last_random: [u8; 32],
 }
 
+#[derive(Debug)]
 pub enum FriProofError {
     QueryMismatch(usize),
     WrongNumberOfQueries,
     WrongNumberOfPaths,
     InclusionPathError(MerkleInclusionPathError),
-    Generic,
+    IncompatibleLastRandom,
 }
 
 impl<F: HashableField + NttField> FriProof<F> {
@@ -327,7 +342,7 @@ impl<F: HashableField + NttField> FriProof<F> {
         for _ in 0..NUM_QUERIES {
             let random_bytes = transcript.random();
             let random_index = (u64::from_le_bytes(random_bytes[..8].try_into().unwrap())
-                % (domain_size / 2) as u64) as usize;
+                % domain_size as u64) as usize;
             // open query at this index and add the proof to a vector of query proofs
             let query_proof = prover_data.open_query_at(random_index);
             queries.push(query_proof);
@@ -339,6 +354,7 @@ impl<F: HashableField + NttField> FriProof<F> {
             commitments: prover_data.fold_roots(),
             queries,
             last_elem: prover_data.last_element.unwrap(),
+            last_random: transcript.random(),
         }
     }
 
@@ -354,30 +370,34 @@ impl<F: HashableField + NttField> FriProof<F> {
         // Create a transcript for verification
         let mut transcript = Transcript::new();
         let mut random_elements = Vec::new();
-        let mut current_gen =
-            F::pow_2_generator((self.commitments[0].len() as u32).trailing_zeros() as u64).unwrap();
-
         // Simulate the "fold" stage
         for root in self.commitments.iter() {
-	    transcript.append_message(b"merkle_root", root.as_slice());
+            transcript.append_message(b"merkle_root", root.as_slice());
             let random_bytes = transcript.random();
             let random_element = F::from_digest(&random_bytes);
             random_elements.push(random_element);
-            current_gen *= current_gen;
         }
-	// Last fold step
+        // Last fold step
         transcript.append_message(b"last_element", self.last_elem.as_ref());
 
+        let log_domain_size = self.commitments.len() + LOG_BLOWUP;
+        let domain_size = 1 << log_domain_size;
+        let gen = F::pow_2_generator(log_domain_size as u64).unwrap();
         // Simulate the "query" stage
         for query in &self.queries {
             query.verify(
+                domain_size,
+                gen,
                 &self.commitments,
-                current_gen,
                 self.last_elem,
                 &random_elements,
+                &mut transcript,
             )?;
         }
 
+        if self.last_random != transcript.random() {
+            return Err(FriProofError::IncompatibleLastRandom);
+        }
         Ok(())
     }
 }
@@ -433,8 +453,7 @@ mod tests {
 
         let mut transcript = Transcript::new();
         let proof = FriProof::prove(values.clone(), &mut transcript);
-
-        assert!(proof.verify().is_ok(), "Proof verification failed");
+        proof.verify().unwrap();
     }
 
     #[test]

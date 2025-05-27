@@ -97,13 +97,17 @@ fn hash_node(left: &HashDigest, right: &HashDigest) -> HashDigest {
 
 pub enum MerkleInclusionPathError {
     IncompatibleHash(HashDigest, HashDigest),
+    IncompatibleIndex(usize, usize),
 }
 
 impl std::fmt::Debug for MerkleInclusionPathError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MerkleInclusionPathError::IncompatibleHash(hash1, hash2) => {
-                write!(f, "{hash1:x?} != {hash2:x?}")
+                write!(f, "Incompatible hash. Expected {hash1:x?}, found {hash2:x?}")
+            }
+	    MerkleInclusionPathError::IncompatibleIndex(index1, index2) => {
+                write!(f, "Incompatible index. Expected {index1}, found {index2}")
             }
         }
     }
@@ -113,28 +117,38 @@ impl<T> MerkleInclusionPath<T>
 where
     T: AsRef<[u8]> + Clone,
 {
-    pub fn verify(&self, root: &HashDigest) -> Result<(), MerkleInclusionPathError> {
+    pub fn verify(&self, root: &HashDigest, index: usize) -> Result<(), MerkleInclusionPathError> {
         let mut computed_hash = {
             let mut hasher = Sha256::new();
             hasher.update(self.value.as_ref());
             hasher.finalize()
         };
-
-        for (sibling_hash, direction) in &self.path {
-            computed_hash = match direction {
-                Direction::Left => hash_node(sibling_hash, &computed_hash),
-                Direction::Right => hash_node(&computed_hash, sibling_hash),
+	let mut computed_index = 0;
+        for (i, (sibling_hash, direction)) in self.path.iter().enumerate() {
+            match direction {
+                Direction::Left => {
+		    computed_index += 1 << i;
+		    computed_hash = hash_node(sibling_hash, &computed_hash)
+		}
+                Direction::Right => {
+		    computed_hash = hash_node(&computed_hash, sibling_hash)
+		}
             };
         }
 
-        if &computed_hash == root {
-            Ok(())
-        } else {
-            Err(MerkleInclusionPathError::IncompatibleHash(
+        if &computed_hash != root {
+            return Err(MerkleInclusionPathError::IncompatibleHash(
                 *root,
                 computed_hash,
-            ))
+            ));
         }
+	if computed_index != index {
+	    return Err(MerkleInclusionPathError::IncompatibleIndex(
+		index,
+		computed_index
+	    ))
+	}
+        Ok(())
     }
 }
 
@@ -147,5 +161,5 @@ fn test_open_verify() {
     println!("Merkle Root:\n {:x?}", merkle_tree.root());
     let proof = merkle_tree.open(5).unwrap();
     println!("Inclusion Path for index 5:\n {proof:x?}");
-    proof.verify(&merkle_tree.root()).unwrap();
+    proof.verify(&merkle_tree.root(), 5).unwrap();
 }

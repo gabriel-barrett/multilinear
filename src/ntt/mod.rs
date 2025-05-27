@@ -1,3 +1,5 @@
+use ark_ff::Field as ArkField;
+
 use crate::field::{Field, Field128};
 
 #[derive(Clone, Debug, PartialEq)]
@@ -11,6 +13,9 @@ pub trait NttField: Field {
     fn generator() -> Self;
 
     fn pow_2_generator(log_size: u64) -> Option<Self>;
+
+    fn pow<S: AsRef<[u64]>>(&self, exp: S) -> Self;
+
 }
 
 impl NttField for Field128 {
@@ -37,6 +42,10 @@ impl NttField for Field128 {
         let exp_high = (exp >> 64) as u64;
 
         Some(Self::generator().pow([exp_low, exp_high]))
+    }
+
+    fn pow<S: AsRef<[u64]>>(&self, exp: S) -> Self {
+        Field128(self.0.pow(exp))
     }
 }
 
