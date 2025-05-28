@@ -1,43 +1,41 @@
-use crate::merkle_tree::{Merkle, MerkleInclusionPath, MerkleInclusionPathError};
+use crate::merkle_tree::{HashDigest, Merkle, MerkleInclusionPath, MerkleInclusionPathError};
 use crate::ntt::{NttField, Polynomial};
 use crate::transcript::{HashableField, Transcript};
-use crate::{field::Field, merkle_tree::HashDigest};
 use serde::{Deserialize, Serialize};
 
 pub struct ProverData<F> {
     pub commitments: Vec<Merkle<F>>,
-    pub polynomials: Vec<Vec<F>>,
     pub last_element: Option<F>,
 }
 
 pub const LOG_BLOWUP: usize = 1;
 pub const NUM_QUERIES: usize = 128;
 
-pub fn reed_solomon<F: Field>(mut coeffs: Vec<F>, gen: F) -> Vec<F> {
+pub fn reed_solomon<F: NttField>(mut coeffs: Vec<F>) -> Vec<F> {
     // first, multiply the size of `coeffs` by a factor of `blowup` through adding zeros
     let n = coeffs.len();
     let blowup = 1 << LOG_BLOWUP;
     assert!(blowup > 1);
     coeffs.resize(blowup * n, F::from(0));
+    // compute the generator for the domain size
+    let domain_size = coeffs.len();
+    let log_size = domain_size.trailing_zeros();
+    let gen = F::pow_2_generator(log_size as u64).unwrap();
     // use `ntt` to compute the Reed-Solomon encoding.
     let lagrange = Polynomial { coeffs }.ntt_iterative(gen);
     lagrange.evals
 }
 
 impl<F: HashableField> ProverData<F> {
-    pub fn init(values: Vec<F>, gen: F, transcript: &mut Transcript) -> Self {
+    pub fn init(code: Vec<F>, transcript: &mut Transcript) -> Self {
         // `values` must be power of two.
         assert!(
-            values.len().is_power_of_two(),
+            code.len().is_power_of_two(),
             "Input size must be a power of two"
         );
-        // push save a copy of `values` to `polynomials`
-        let polynomials = vec![values.clone()];
-        // use `reed_solomon` to compute the values for commitment.
-        let rs_encoded = reed_solomon(values, gen);
         // commit to a `Merkle` tree using `to_bytes` method.
         let mut commitments = Vec::new();
-        let merkle = Merkle::commit(rs_encoded);
+        let merkle = Merkle::commit(code);
         let root = merkle.root();
         // add to `commitments`.
         commitments.push(merkle);
@@ -45,58 +43,11 @@ impl<F: HashableField> ProverData<F> {
         transcript.append_message(b"merkle_root", root.as_slice());
         Self {
             commitments,
-            polynomials,
             last_element: None,
         }
     }
 
     pub fn fold_step(&mut self, gen: F, transcript: &mut Transcript) {
-        let last_poly = self.polynomials.last().unwrap().clone();
-        let n = last_poly.len();
-        if n <= 1 {
-            return;
-        }
-
-        // generate random field element called `r` from the transcript using `random` and `from_digest`
-        let random_bytes = transcript.random();
-        let r = F::from_digest(&random_bytes);
-
-        let half_n = n >> 1;
-        let mut next_poly = Vec::with_capacity(half_n);
-
-        for i in 0..(half_n) {
-            let even = last_poly[i * 2];
-            let odd = last_poly[i * 2 + 1];
-
-            next_poly.push(even + r * odd);
-        }
-        if half_n == 1 {
-            // sanity check: last polynomial must be constant
-            let first = next_poly[0];
-            assert!(
-                next_poly.iter().all(|next| first == *next),
-                "not an RS code"
-            );
-            self.last_element = Some(first);
-            transcript.append_message(b"last_element", first.as_ref());
-            return;
-        }
-        self.polynomials.push(next_poly.clone());
-
-        // Use `reed_solomon` to compute the values for commitment.
-        let next_gen = gen * gen;
-        let rs_encoded = reed_solomon(next_poly, next_gen);
-
-        // `commit` to Merkle, etc
-        let merkle = Merkle::commit(rs_encoded);
-        let root = merkle.root();
-        self.commitments.push(merkle);
-
-        // Use the `root()` to update the transcript
-        transcript.append_message(b"merkle_root", root.as_slice());
-    }
-
-    pub fn fold_step_opt(&mut self, gen: F, transcript: &mut Transcript) {
         // do not use polynomials. instead work solely on lagrange basis reading
         // the merkle `value` field
         let last_data = self.commitments.last().unwrap().data.clone();
@@ -144,11 +95,11 @@ impl<F: HashableField> ProverData<F> {
         transcript.append_message(b"merkle_root", root.as_slice());
     }
 
-    pub fn fold(gen: F, values: Vec<F>, transcript: &mut Transcript) -> Self {
-        let mut prover_data = Self::init(values, gen, transcript);
+    pub fn fold(gen: F, code: Vec<F>, transcript: &mut Transcript) -> Self {
+        let mut prover_data = Self::init(code, transcript);
         let mut current_gen = gen;
         while prover_data.last_element.is_none() {
-            prover_data.fold_step_opt(current_gen, transcript);
+            prover_data.fold_step(current_gen, transcript);
             current_gen *= current_gen;
         }
         prover_data
@@ -278,16 +229,14 @@ pub enum FriProofError {
 }
 
 impl<F: HashableField + NttField> FriProof<F> {
-    pub fn prove(message: Vec<F>, transcript: &mut Transcript) -> FriProof<F> {
+    pub fn prove(code: Vec<F>, transcript: &mut Transcript) -> FriProof<F> {
         // get the generator for length = blowup * message.len
-        let n = message.len();
-        let blowup = 1 << LOG_BLOWUP;
-        let domain_size = blowup * n;
+        let domain_size = code.len();
         let log_size = domain_size.trailing_zeros();
         let gen = F::pow_2_generator(log_size as u64).unwrap();
 
         // call `fold`
-        let prover_data = ProverData::fold(gen, message, transcript);
+        let prover_data = ProverData::fold(gen, code, transcript);
         // for `0..NUM_QUERIES` generate random index between `0..domain_size/2`
         let mut queries = Vec::with_capacity(NUM_QUERIES);
         for _ in 0..NUM_QUERIES {
@@ -357,38 +306,7 @@ impl<F: HashableField + NttField> FriProof<F> {
 mod tests {
     use super::*;
     use crate::field::Field128;
-    use crate::ntt::NttField;
     use bincode; // Ensure bincode is imported
-
-    #[test]
-    fn fold_step_test() {
-        let log_n = 5;
-        let values: Vec<Field128> = (0..1 << log_n)
-            .map(|i| Field128::from(i as i64 * 7 + 3))
-            .collect();
-
-        let gen = Field128::pow_2_generator(log_n + 1).unwrap();
-
-        let mut transcript1 = Transcript::new();
-        let mut transcript2 = Transcript::new();
-
-        let mut prover1 = ProverData::init(values.clone(), gen, &mut transcript1);
-        let mut prover2 = ProverData::init(values.clone(), gen, &mut transcript2);
-
-        prover1.fold_step(gen, &mut transcript1);
-        prover2.fold_step_opt(gen, &mut transcript2);
-
-        assert_eq!(
-            prover1.commitments[1].root(),
-            prover2.commitments[1].root(),
-            "Merkle roots differ after folding"
-        );
-
-        assert_eq!(
-            prover1.commitments[1].data, prover2.commitments[1].data,
-            "Commitment data differs after folding"
-        );
-    }
 
     // create a test for prove and verify!
 
@@ -398,13 +316,13 @@ mod tests {
     // instances for Serde in the proof datatype
     #[test]
     fn prove_and_verify_test() {
-        let log_n = 5;
+        let log_n = 10;
         let values: Vec<Field128> = (0..1 << log_n)
             .map(|i| Field128::from(i as i64 * 7 + 3))
             .collect();
-
+        let code = reed_solomon(values);
         let mut transcript = Transcript::new();
-        let proof = FriProof::prove(values.clone(), &mut transcript);
+        let proof = FriProof::prove(code, &mut transcript);
         proof.verify().unwrap();
     }
 
@@ -412,9 +330,9 @@ mod tests {
     fn big_rs_code_proof_test() {
         // Create a large RS code with 1 million elements
         let values: Vec<Field128> = (0..1 << 20).map(|i| Field128::from(i as i64)).collect();
-
+        let code = reed_solomon(values);
         let mut transcript = Transcript::new();
-        let proof = FriProof::prove(values.clone(), &mut transcript);
+        let proof = FriProof::prove(code, &mut transcript);
 
         // Serialize the proof using Serde and Bincode
         let serialized_proof = bincode::serialize(&proof).expect("Serialization failed");
