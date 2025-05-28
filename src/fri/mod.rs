@@ -328,6 +328,10 @@ mod tests {
 
     #[test]
     fn big_rs_code_proof_test() {
+        let config = bincode::config::standard()
+            .with_little_endian()
+            .with_fixed_int_encoding();
+
         // Create a large RS code with 1 million elements
         let values: Vec<Field128> = (0..1 << 20).map(|i| Field128::from(i as i64)).collect();
         let code = reed_solomon(values);
@@ -335,11 +339,13 @@ mod tests {
         let proof = FriProof::prove(code, &mut transcript);
 
         // Serialize the proof using Serde and Bincode
-        let serialized_proof = bincode::serialize(&proof).expect("Serialization failed");
+        let serialized_proof =
+            bincode::serde::encode_to_vec(&proof, config).expect("Serialization failed");
         println!("Size of serialized proof: {} bytes", serialized_proof.len());
 
         // Deserialize the proof
-        let _: FriProof<Field128> =
-            bincode::deserialize(&serialized_proof).expect("Deserialization failed");
+        let _: (FriProof<Field128>, usize) =
+            bincode::serde::decode_from_slice(&serialized_proof, config)
+                .expect("Deserialization failed");
     }
 }

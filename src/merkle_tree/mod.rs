@@ -11,6 +11,7 @@ pub struct Merkle<T> {
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[repr(u8)]
 pub enum Direction {
     Left,
     Right,
