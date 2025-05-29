@@ -28,6 +28,7 @@ pub fn reed_solomon<F: NttField>(mut coeffs: Vec<F>) -> Vec<F> {
 }
 
 #[repr(C)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ReedSolomonPair<F> {
     pub value: F,
     pub minus_value: F,
@@ -41,11 +42,10 @@ impl<F: AsRef<[u8]>> AsRef<[u8]> for ReedSolomonPair<F> {
     }
 }
 
-// FIX `commit_rs_code` must return `Merkle<ReedSolomonPair<F>>`
 fn commit_rs_code<F: HashableField>(code: Vec<F>) -> Merkle<ReedSolomonPair<F>> {
     let n = code.len();
     let half_n = n / 2;
-    let pairs: Vec<ReedSolomonPair<F>> = (0..half_n)
+    let pairs = (0..half_n)
         .map(|i| ReedSolomonPair {
             value: code[i],
             minus_value: code[i + half_n],
@@ -75,9 +75,10 @@ impl<F: HashableField> ProverData<F> {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     pub fn fold_step(&mut self, gen: F, transcript: &mut Transcript) {
         let last_data = self.commitments.last().unwrap().data.clone();
-        let n = last_data.len();
+        let n = last_data.len() * 2;
         let blowup = 1 << LOG_BLOWUP;
         if n <= blowup {
             return;
@@ -89,9 +90,9 @@ impl<F: HashableField> ProverData<F> {
         let mut gen_pow = F::from(1);
         for i in 0..half_n {
             // p(gen^i)
-            let a = last_data[i];
+            let a = last_data[i].value;
             // p(-gen^i)
-            let b = last_data[i + half_n];
+            let b = last_data[i].minus_value;
             // even(x^2) = (p(x) + p(-x))/2, where x = gen^i
             let even = (a + b) / F::from(2);
             // odd(x^2) = (p(x) - p(-x))/2x, where x = gen^i
@@ -140,7 +141,7 @@ impl<F: HashableField> ProverData<F> {
 
     pub fn open_query_at(&self, index: usize) -> QueryProof<F> {
         let n = self.commitments[0].data.len();
-        assert!(index < n / 2); // Ensure index is in the first half
+        assert!(index < n);
 
         let mut paths = Vec::new();
         let mut current_index = index;
@@ -150,11 +151,10 @@ impl<F: HashableField> ProverData<F> {
             // Open only once, as it opens both elements
             let path = merkle.open(current_index).expect("Index out of bounds");
 
-            // Only push the path, not the conjugate path
+            // Only push the path
             paths.push(path);
 
             current_n /= 2;
-            // Take the remainder with n/2
             current_index %= current_n;
         }
 
@@ -164,9 +164,7 @@ impl<F: HashableField> ProverData<F> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryProof<F> {
-    // merkle paths for all fold layers at both the index and the conjugate index
-    // FIX instead of a pair of paths of F,
-    // take a path of ReedSolomonPair<F>
+    // merkle paths for all fold layers
     pub paths: Vec<MerkleInclusionPath<ReedSolomonPair<F>>>,
 }
 
@@ -184,28 +182,24 @@ impl<F: HashableField + NttField> QueryProof<F> {
             return Err(FriProofError::WrongNumberOfPaths);
         }
 
-        let random_bytes = transcript.random();
-        let random_index = (u64::from_le_bytes(random_bytes[..8].try_into().unwrap())
-            % domain_size as u64) as usize;
+        let n = domain_size / 2;
+        let random_u64 = u64::from_le_bytes(transcript.random()[..8].try_into().unwrap());
+        // the index is half of the domain size because the merkle tree takes pairs of elements
+        let random_index = random_u64 as usize % n;
         transcript.append_message(b"query_index", &random_index.to_le_bytes());
 
-        // FIX follow the prover, as in `open_query_at`
-        let mut current_n = domain_size;
+        let mut current_n = n;
         let mut current_index = random_index;
-        let mut current_conjugate = (random_index + domain_size / 2) % domain_size;
         let mut current_gen = gen;
         for i in 0..self.paths.len() {
-            let (value_path, minus_value_path) = &self.paths[i];
+            let path = &self.paths[i];
             let commitment = &commitments[i];
-            if let Err(err) = value_path.verify(commitment, current_index) {
-                return Err(FriProofError::InclusionPathError(err));
-            }
-            if let Err(err) = minus_value_path.verify(commitment, current_conjugate) {
+            if let Err(err) = path.verify(commitment, current_index) {
                 return Err(FriProofError::InclusionPathError(err));
             }
 
-            let value = value_path.value; // p(g^i)
-            let minus_value = minus_value_path.value; // p(-g^i)
+            let value = path.value.value; // p(g^i)
+            let minus_value = path.value.minus_value; // p(-g^i)
             let current_gen_pow = current_gen.pow([current_index as u64]); // g^i
             let even = (value + minus_value) / F::from(2);
             let odd = (value - minus_value) / (F::from(2) * current_gen_pow);
@@ -216,17 +210,20 @@ impl<F: HashableField + NttField> QueryProof<F> {
                 }
                 break;
             }
-
-            let (next_value_path, _) = &self.paths[i + 1];
-            let next_value = next_value_path.value; // p(g^(2i))
+            let next_index = current_index % (current_n / 2);
+            let next_path = &self.paths[i + 1];
+            let next_value = if next_index == current_index {
+                next_path.value.value
+            } else {
+                next_path.value.minus_value
+            }; // p(g^(2i))
             if next_value != even + random_elements[i] * odd {
                 return Err(FriProofError::QueryMismatch(i));
             }
 
             current_gen *= current_gen;
             current_n /= 2;
-            current_index %= current_n;
-            current_conjugate = (current_index + current_n / 2) % current_n;
+            current_index = next_index;
         }
 
         Ok(())
@@ -266,9 +263,9 @@ impl<F: HashableField + NttField> FriProof<F> {
         // for `0..NUM_QUERIES` generate random index between `0..domain_size/2`
         let mut queries = Vec::with_capacity(NUM_QUERIES);
         for _ in 0..NUM_QUERIES {
-            let random_bytes = transcript.random();
-            let random_index = (u64::from_le_bytes(random_bytes[..8].try_into().unwrap())
-                % domain_size as u64) as usize;
+            let random_u64 = u64::from_le_bytes(transcript.random()[..8].try_into().unwrap());
+            // the index is half of the domain size because the merkle tree takes pairs of elements
+            let random_index = random_u64 as usize % (domain_size / 2);
             // open query at this index and add the proof to a vector of query proofs
             let query_proof = prover_data.open_query_at(random_index);
             queries.push(query_proof);
