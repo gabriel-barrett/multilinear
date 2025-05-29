@@ -4,7 +4,8 @@ use crate::transcript::{HashableField, Transcript};
 use serde::{Deserialize, Serialize};
 
 pub struct ProverData<F> {
-    pub commitments: Vec<Merkle<F>>,
+    // Now using Merkle<ReedSolomonPair<F>>
+    pub commitments: Vec<Merkle<ReedSolomonPair<F>>>,
     pub last_element: Option<F>,
 }
 
@@ -26,6 +27,33 @@ pub fn reed_solomon<F: NttField>(mut coeffs: Vec<F>) -> Vec<F> {
     lagrange.evals
 }
 
+#[repr(C)]
+pub struct ReedSolomonPair<F> {
+    pub value: F,
+    pub minus_value: F,
+}
+
+impl<F: AsRef<[u8]>> AsRef<[u8]> for ReedSolomonPair<F> {
+    fn as_ref(&self) -> &[u8] {
+        let len = 2 * self.value.as_ref().len();
+        let ptr: *const ReedSolomonPair<F> = self;
+        unsafe { std::slice::from_raw_parts(ptr.cast::<u8>(), len) }
+    }
+}
+
+// FIX `commit_rs_code` must return `Merkle<ReedSolomonPair<F>>`
+fn commit_rs_code<F: HashableField>(code: Vec<F>) -> Merkle<ReedSolomonPair<F>> {
+    let n = code.len();
+    let half_n = n / 2;
+    let pairs: Vec<ReedSolomonPair<F>> = (0..half_n)
+        .map(|i| ReedSolomonPair {
+            value: code[i],
+            minus_value: code[i + half_n],
+        })
+        .collect();
+    Merkle::commit(pairs)
+}
+
 impl<F: HashableField> ProverData<F> {
     pub fn init(code: Vec<F>, transcript: &mut Transcript) -> Self {
         // `values` must be power of two.
@@ -35,7 +63,7 @@ impl<F: HashableField> ProverData<F> {
         );
         // commit to a `Merkle` tree using `to_bytes` method.
         let mut commitments = Vec::new();
-        let merkle = Merkle::commit(code);
+        let merkle = commit_rs_code(code);
         let root = merkle.root();
         // add to `commitments`.
         commitments.push(merkle);
@@ -48,8 +76,6 @@ impl<F: HashableField> ProverData<F> {
     }
 
     pub fn fold_step(&mut self, gen: F, transcript: &mut Transcript) {
-        // do not use polynomials. instead work solely on lagrange basis reading
-        // the merkle `value` field
         let last_data = self.commitments.last().unwrap().data.clone();
         let n = last_data.len();
         let blowup = 1 << LOG_BLOWUP;
@@ -87,7 +113,7 @@ impl<F: HashableField> ProverData<F> {
             return;
         }
         // `commit` to Merkle, etc
-        let merkle = Merkle::commit(next_data);
+        let merkle = commit_rs_code(next_data);
         let root = merkle.root();
         self.commitments.push(merkle);
 
@@ -114,25 +140,22 @@ impl<F: HashableField> ProverData<F> {
 
     pub fn open_query_at(&self, index: usize) -> QueryProof<F> {
         let n = self.commitments[0].data.len();
-        assert!(index < n);
-        let conjugate_index = (index + n / 2) % n;
+        assert!(index < n / 2); // Ensure index is in the first half
 
         let mut paths = Vec::new();
         let mut current_index = index;
-        let mut current_conjugate = conjugate_index;
         let mut current_n = n;
 
         for merkle in &self.commitments {
+            // Open only once, as it opens both elements
             let path = merkle.open(current_index).expect("Index out of bounds");
-            let conjugate_path = merkle
-                .open(current_conjugate)
-                .expect("Conjugate index out of bounds");
 
-            paths.push((path, conjugate_path));
+            // Only push the path, not the conjugate path
+            paths.push(path);
 
             current_n /= 2;
+            // Take the remainder with n/2
             current_index %= current_n;
-            current_conjugate = (current_index + current_n / 2) % current_n;
         }
 
         QueryProof { paths }
@@ -142,7 +165,9 @@ impl<F: HashableField> ProverData<F> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueryProof<F> {
     // merkle paths for all fold layers at both the index and the conjugate index
-    pub paths: Vec<(MerkleInclusionPath<F>, MerkleInclusionPath<F>)>,
+    // FIX instead of a pair of paths of F,
+    // take a path of ReedSolomonPair<F>
+    pub paths: Vec<MerkleInclusionPath<ReedSolomonPair<F>>>,
 }
 
 impl<F: HashableField + NttField> QueryProof<F> {
@@ -164,6 +189,7 @@ impl<F: HashableField + NttField> QueryProof<F> {
             % domain_size as u64) as usize;
         transcript.append_message(b"query_index", &random_index.to_le_bytes());
 
+        // FIX follow the prover, as in `open_query_at`
         let mut current_n = domain_size;
         let mut current_index = random_index;
         let mut current_conjugate = (random_index + domain_size / 2) % domain_size;
