@@ -15,6 +15,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
+name = "autocfg"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ace50bade8e6234aa140d9a2f552bbee1db4d353f69b8217bc503490fc1a9f26"
+
+[[package]]
 name = "bincode"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -64,9 +70,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.2.25"
+version = "1.2.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0fc897dc1e865cc67c0e05a836d9d3f1df3cbe442aa4a9473b18e12624a4951"
+checksum = "956a5e21988b87f372569b66183b78babf23ebc2e744b733e4350a752c4dafac"
 dependencies = [
  "shlex",
 ]
@@ -93,6 +99,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "crossbeam-deque"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-utils"
+version = "0.8.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+
+[[package]]
+name = "crunchy"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
+
+[[package]]
 name = "crypto-common"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -111,6 +148,12 @@ dependencies = [
  "block-buffer",
  "crypto-common",
 ]
+
+[[package]]
+name = "either"
+version = "1.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "generic-array"
@@ -133,6 +176,15 @@ dependencies = [
  "libc",
  "r-efi",
  "wasi",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -162,12 +214,297 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "generic-array",
+ "p3-air",
+ "p3-baby-bear",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-fri",
+ "p3-goldilocks",
+ "p3-keccak",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-merkle-tree",
+ "p3-symmetric",
+ "p3-uni-stark",
  "rand",
  "rand_chacha",
  "serde",
  "sha2",
  "winterfell",
 ]
+
+[[package]]
+name = "num-bigint"
+version = "0.4.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5e44f723f1133c9deac646763579fdb3ac745e418f2a7af9cd0c431da1f20b9"
+dependencies = [
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-integer"
+version = "0.1.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7969661fd2958a5cb096e56c8e1ad0444ac2bbcd0061bd28660485a44879858f"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
+dependencies = [
+ "autocfg",
+]
+
+[[package]]
+name = "p3-air"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "p3-matrix",
+]
+
+[[package]]
+name = "p3-baby-bear"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "p3-mds",
+ "p3-monty-31",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "rand",
+]
+
+[[package]]
+name = "p3-challenger"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "p3-maybe-rayon",
+ "p3-symmetric",
+ "p3-util",
+ "tracing",
+]
+
+[[package]]
+name = "p3-commit"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-challenger",
+ "p3-dft",
+ "p3-field",
+ "p3-matrix",
+ "p3-util",
+ "serde",
+]
+
+[[package]]
+name = "p3-dft"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-util",
+ "tracing",
+]
+
+[[package]]
+name = "p3-field"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "num-bigint",
+ "p3-maybe-rayon",
+ "p3-util",
+ "paste",
+ "rand",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "p3-fri"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-interpolation",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-util",
+ "rand",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "p3-goldilocks"
+version = "0.1.0"
+dependencies = [
+ "num-bigint",
+ "p3-dft",
+ "p3-field",
+ "p3-mds",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "p3-util",
+ "paste",
+ "rand",
+ "serde",
+]
+
+[[package]]
+name = "p3-interpolation"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-util",
+]
+
+[[package]]
+name = "p3-keccak"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "p3-symmetric",
+ "p3-util",
+ "tiny-keccak",
+]
+
+[[package]]
+name = "p3-matrix"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-field",
+ "p3-maybe-rayon",
+ "p3-util",
+ "rand",
+ "serde",
+ "tracing",
+ "transpose",
+]
+
+[[package]]
+name = "p3-maybe-rayon"
+version = "0.1.0"
+dependencies = [
+ "rayon",
+]
+
+[[package]]
+name = "p3-mds"
+version = "0.1.0"
+dependencies = [
+ "p3-dft",
+ "p3-field",
+ "p3-symmetric",
+ "p3-util",
+ "rand",
+]
+
+[[package]]
+name = "p3-merkle-tree"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-commit",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-symmetric",
+ "p3-util",
+ "rand",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "p3-monty-31"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "num-bigint",
+ "p3-dft",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-mds",
+ "p3-poseidon2",
+ "p3-symmetric",
+ "p3-util",
+ "paste",
+ "rand",
+ "serde",
+ "tracing",
+ "transpose",
+]
+
+[[package]]
+name = "p3-poseidon2"
+version = "0.1.0"
+dependencies = [
+ "p3-field",
+ "p3-mds",
+ "p3-symmetric",
+ "p3-util",
+ "rand",
+]
+
+[[package]]
+name = "p3-symmetric"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-field",
+ "serde",
+]
+
+[[package]]
+name = "p3-uni-stark"
+version = "0.1.0"
+dependencies = [
+ "itertools",
+ "p3-air",
+ "p3-challenger",
+ "p3-commit",
+ "p3-dft",
+ "p3-field",
+ "p3-matrix",
+ "p3-maybe-rayon",
+ "p3-util",
+ "serde",
+ "tracing",
+]
+
+[[package]]
+name = "p3-util"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "pin-project-lite"
@@ -238,6 +575,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rayon"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "serde"
 version = "1.0.219"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -285,6 +642,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
+name = "strength_reduce"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe895eb47f22e2ddd4dabc02bce419d2e643c8e3b585c78158b349195bc24d82"
+
+[[package]]
 name = "syn"
 version = "2.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -293,6 +656,15 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
+]
+
+[[package]]
+name = "tiny-keccak"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c9d3793400a45f954c52e73d068316d76b6f4e36977e3fcebb13a2721e80237"
+dependencies = [
+ "crunchy",
 ]
 
 [[package]]
@@ -322,6 +694,16 @@ name = "tracing-core"
 version = "0.1.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e672c95779cf947c5311f83787af4fa8fffd12fb27e4993211a84bdfd9610f9c"
+
+[[package]]
+name = "transpose"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ad61aed86bc3faea4300c7aee358b4c6d0c8d6ccc36524c96e4c92ccf26e77e"
+dependencies = [
+ "num-integer",
+ "strength_reduce",
+]
 
 [[package]]
 name = "typenum"

@@ -6,6 +6,20 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+p3-air = { path = "Plonky3/air" }
+p3-baby-bear = { path = "Plonky3/baby-bear" }
+p3-goldilocks = { path = "Plonky3/goldilocks" }
+p3-challenger = { path = "Plonky3/challenger" }
+p3-commit = { path = "Plonky3/commit" }
+p3-dft = { path = "Plonky3/dft" }
+p3-field = { path = "Plonky3/field" }
+p3-fri = { path = "Plonky3/fri" }
+p3-keccak = { path = "Plonky3/keccak" }
+p3-maybe-rayon = { path = "Plonky3/maybe-rayon" }
+p3-matrix = { path = "Plonky3/matrix" }
+p3-merkle-tree = { path = "Plonky3/merkle-tree" }
+p3-symmetric = { path = "Plonky3/symmetric" }
+p3-uni-stark = { path = "Plonky3/uni-stark" }
 rand = { version = "0.9.0" }
 rand_chacha = { version = "0.9" }
 sha2 = "0.10"
@@ -13,3 +27,6 @@ generic-array = { version = "0.14", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 bincode = { version = "2.0.0", features = ["serde"] }
 winterfell = { version = "0.12.0" }
+
+[features]
+parallel = ["p3-maybe-rayon/parallel", "p3-uni-stark/parallel"]

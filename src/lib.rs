@@ -7,6 +7,9 @@ pub mod ntt;
 pub mod polynomials;
 pub mod transcript;
 
+#[cfg(test)]
+pub mod p3;
+
 #[macro_export]
 macro_rules! benchmark {
     ($msg:expr, $expr:expr) => {{

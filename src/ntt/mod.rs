@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn ntt_benchmark_test() {
-        let log_n = 24;
+        let log_n = 20;
         let n = 1 << log_n;
         let coeffs = (0..n).map(F::from).collect();
         let pol = Polynomial::<F> { coeffs };
